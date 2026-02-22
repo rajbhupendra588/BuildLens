@@ -6,7 +6,7 @@ from app.services.retrieval_service import retrieval_service
 class LLMService:
     def __init__(self):
         self.base_url = settings.LLM.OLLAMA_BASE_URL
-        self.model = "qwen3:8b"
+        self.model = "kimi-k2.5:cloud"
 
     async def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
         context_text = retrieval_service.format_context_for_llm(context_chunks)
@@ -18,7 +18,9 @@ class LLMService:
             f"Context:\n{context_text}"
         )
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        timeout = httpx.Timeout(300.0, read=300.0)
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 f"{self.base_url}/api/generate",
                 json={
@@ -26,6 +28,10 @@ class LLMService:
                     "prompt": f"Question: {query}",
                     "system": system_prompt,
                     "stream": False,
+                    "options": {
+                        "num_ctx": 4096, # context window
+                        "temperature": 0
+                    }
                 }
             )
 
