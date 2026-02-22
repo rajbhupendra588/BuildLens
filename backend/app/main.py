@@ -3,7 +3,7 @@ from importlib import metadata
 from fastapi import FastAPI
 from qdrant_client import QdrantClient
 from app.core.config import settings
-from app.api.v1 import ingest
+from app.api.v1 import ingest, query
 from app.core.exceptions import global_exception_handler
 
 # Fetch version from pyproject.toml (Standard for 2026)
@@ -19,6 +19,7 @@ app = FastAPI(
 
 # Include API Routers
 app.include_router(ingest.router, prefix="/api/v1")
+app.include_router(query.router, prefix="/api/v1")
 
 # Register Exception Handler
 app.add_exception_handler(Exception, global_exception_handler)
