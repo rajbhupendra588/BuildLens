@@ -30,7 +30,7 @@ async def health_check():
     
     try:
         # Use the nested settings logic we defined
-        client = QdrantClient(url=settings.QDRANT.url) 
+        client = QdrantClient(url=f"http://{settings.QDRANT.HOST}:{settings.QDRANT.PORT}") 
         # get_collections() returns a list of collections
         collections = client.get_collections()
         qdrant_status = "connected"
@@ -47,7 +47,7 @@ async def health_check():
         "qdrant": {
             "connected": db_alive,
             "status": qdrant_status,
-            "url": settings.QDRANT.url
+            "url": f"http://{settings.QDRANT.HOST}:{settings.QDRANT.PORT}"
         },
         "llm": {
             "provider": settings.LLM.PROVIDER

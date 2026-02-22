@@ -7,7 +7,8 @@ DOTENV_PATH = Path(__file__).resolve().parent.parent.parent.parent / ".env"
 
 class QdrantSettings(BaseSettings):
     """Configuration for the Vector Database."""
-    url: str = "http://localhost:6333"
+    HOST: str = "qdrant"
+    PORT: int = 6333
     COLLECTION_NAME: str = "doc_rag_knowledge"
 
 class LLMSettings(BaseSettings):
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     # App Config
     APP_NAME: str = "DocRAG"
     ENVIRONMENT: Literal["development", "production", "test"] = "development"
+
+    # Embedding Model
+    EMBED_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # Nested Settings
     QDRANT: QdrantSettings = QdrantSettings()

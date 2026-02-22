@@ -2,13 +2,14 @@ from typing import List, Union, Any
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 from docling_core.types.doc.document import DoclingDocument
 import uuid
+from app.core.config import settings
 
 class ChunkingService:
     def __init__(self):
         # HybridChunker is preferred as it respects document hierarchy
         # max_tokens can be adjested based on your LLM context (e.g., 400-800)
         self.chunker = HybridChunker(
-            tokenizer="sentence-transformers/all-MiniLM-L6-v2",
+            tokenizer=settings.EMBED_MODEL,
             max_tokens=512,
             merge_peers=True
         )
