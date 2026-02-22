@@ -20,7 +20,25 @@ Our architecture follows a modular monorepo pattern:
 DocRAG is fully containerized. To get started, ensure you have **Docker** and **Docker Compose** installed.
 
 1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/your-username/DocRAG.git
    cd DocRAG
    ```
+
+2. **Setup Environment Variables:**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Launch the stack:**
+
+   ```bash
+   docker-compose up --build
+   ```
+
+4. **Access the application:**
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:8000
+   - Qdrant: http://localhost:6333
