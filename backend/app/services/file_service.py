@@ -56,11 +56,11 @@ class FileService:
 
             # Docling for PDF, DOCX, Images
             result = self.converter.convert(temp_path)
-            return result.document.export_to_markdown()
+            return result.document
 
         except Exception as e:
             print(f"Error processing {file.filename}: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
+            # raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
         finally:
             if temp_path.exists():
                 os.remove(temp_path)

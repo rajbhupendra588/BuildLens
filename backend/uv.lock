@@ -331,6 +331,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "docling" },
+    { name = "docling-core" },
     { name = "fastapi" },
     { name = "langchain" },
     { name = "openpyxl" },
@@ -344,6 +345,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "docling", specifier = ">=2.74.0" },
+    { name = "docling-core", specifier = ">=2.65.1" },
     { name = "fastapi", specifier = ">=0.129.2" },
     { name = "langchain", specifier = ">=1.2.10" },
     { name = "openpyxl", specifier = ">=3.1.5" },

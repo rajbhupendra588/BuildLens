@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Depends
 from app.services.file_service import file_service
+from app.services.chunking_service import chunking_service
 
 router = APIRouter(prefix="/ingest", tags=["Ingestion"])
 
@@ -9,11 +10,14 @@ async def upload_document(file: UploadFile = File(...)):
     await file_service.validate_file(file)
 
     # Parse to Markdown
-    markdown_content = await file_service.process_file(file)
+    extracted_data = await file_service.process_file(file)
 
-    # TODO: Chunking & Embedding
+    # Chunking
+    chunks = chunking_service.split_content(extracted_data, file.filename)
+
+    # TODO: Embedding
     return {
         "file_name": file.filename,
-        "content_preview": markdown_content[:500],
-        "length": len(markdown_content)
+        "total_chunks": len(chunks),
+        "chunks_preview": chunks[:5]
     }

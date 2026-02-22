@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "docling>=2.74.0",
+    "docling-core>=2.65.1",
     "fastapi>=0.129.2",
     "langchain>=1.2.10",
     "openpyxl>=3.1.5",
