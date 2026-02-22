@@ -3,6 +3,7 @@ from importlib import metadata
 from fastapi import FastAPI
 from qdrant_client import QdrantClient
 from app.core.config import settings
+from app.api.v1 import ingest
 
 # Fetch version from pyproject.toml (Standard for 2026)
 try:
@@ -14,6 +15,9 @@ app = FastAPI(
     title="DocRAG API",
     version=__version__,
 )
+
+# Include API Routers
+app.include_router(ingest.router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():
