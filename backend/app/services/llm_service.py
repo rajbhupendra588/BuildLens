@@ -1,0 +1,37 @@
+import httpx
+from typing import List, Dict, Any
+from app.core.config import settings
+from app.services.retrieval_service import retrieval_service
+
+class LLMService:
+    def __init__(self):
+        self.base_url = settings.LLM.OLLAMA_BASE_URL
+        self.model = "qwen3:8b"
+
+    async def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
+        context_text = retrieval_service.format_context_for_llm(context_chunks)
+
+        system_prompt = (
+            "You are a helpful assistant. Use the provided context to answer the user's question. "
+            "If the answer is not in the context, say that you don't know. "
+            "Do not make up information.\n\n"
+            f"Context:\n{context_text}"
+        )
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{self.base_url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": f"Question: {query}",
+                    "system": system_prompt,
+                    "stream": False,
+                }
+            )
+
+            if response.status_code != 200:
+                raise f"Error from LLM: {response.text}"
+
+            return response.json().get("response", "")
+
+llm_service = LLMService()
