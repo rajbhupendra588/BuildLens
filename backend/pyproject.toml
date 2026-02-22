@@ -1,0 +1,13 @@
+[project]
+name = "docrag"
+version = "0.1.0"
+description = "RAG system for diverse document types"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.129.2",
+    "langchain>=1.2.10",
+    "pydantic-settings>=2.13.1",
+    "qdrant-client>=1.17.0",
+    "uvicorn>=0.41.0",
+]

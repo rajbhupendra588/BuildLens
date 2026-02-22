@@ -1,0 +1,43 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    container_name: docrag-vector-db
+    ports:
+      - "6333:6333" # HTTP API
+      - "6334:6334" # gRPC API (Faster for large data)
+    volumes:
+      - ./qdrant_data:/qdrant/storage:z
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/net/tcp | grep 18BD"]
+      # test: ["CMD-SHELL", "ls /qdrant/storage || exit 1"]
+      # test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - docrag-net
+
+  backend:
+    build: ./backend
+    container_name: docrag-api
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    networks:
+      - docrag-net
+
+  frontend:
+    build: ./frontend
+    container_name: docrag-ui
+    env_file: .env
+    ports:
+      - "3000:3000"
+    networks:
+      - docrag-net
+
+networks:
+  docrag-net:
+    driver: bridge
