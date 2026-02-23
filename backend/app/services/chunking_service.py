@@ -3,6 +3,7 @@ from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 from docling_core.types.doc.document import DoclingDocument
 import uuid
 from app.core.config import settings
+import re
 
 class ChunkingService:
     def __init__(self):
@@ -13,6 +14,27 @@ class ChunkingService:
             max_tokens=512,
             merge_peers=True
         )
+
+    def clean_text(self, text:str) -> str:
+        text = re.sub(r'[\|\+\-]{3,}', '', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    def process_csv_to_sentences(self, file_content: bytes) -> str:
+        try:
+            df = pd.read_csv(io.BytesIO(file_content))
+            df = df.fillna('')
+
+            sentences = []
+            for _, row in df.iterrows():
+                row_str = ", ".join([f"{col}: {val}" for col, val in row.items() if val != ""])
+                if row_str:
+                    sentences.append(row_str)
+            
+            return "\n".join(sentences)
+        except Exception as e:
+            print(f"Error processing CSV: {e}")
+            return file_content.decode("utf-8", errors="ignore")
 
     
     def split_content(self, input_data: Any, file_name: str) -> List[dict]:
@@ -27,17 +49,18 @@ class ChunkingService:
             # 2. FALLBACK: For plain strings (CSV, TXT, MD, PUML, JSON)
             # We wrap the string in a simple way or use the chunker's text mode
             # If HybridChunker fails on raw strings, we use the internal tokenizer split
+            text_to_process = self.clean_text(str(input_data))
             try:
-                chunks = self.chunker.chunk(str(input_data))
+                chunks = self.chunker.chunk(text_to_process)
             except Exception:
                 # Manual fallback if Docling's Pydantic validation still complains
-                return self._simple_split(str(input_data), file_name)
+                return self._simple_split(text_to_process, file_name)
 
         processed_chunks = []
         for i, chunk in enumerate(chunks):
-            chunk_text = self.chunker.serialize(chunk)
+            chunk_text = self.chunker.serialize(chunk) if hasattr(self.chunker, "serialize") else str(chunk)
             token_count = self.chunker.tokenizer.count_tokens(chunk_text)
-
+            
             processed_chunks.append({ 
                 "id": str(uuid.uuid4()),
                 "content": chunk_text,

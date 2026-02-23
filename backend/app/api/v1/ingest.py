@@ -10,8 +10,12 @@ async def upload_document(file: UploadFile = File(...)):
     # Validate
     await file_service.validate_file(file)
 
-    # Parse to Markdown
-    extracted_data = await file_service.process_file(file)
+    file_content = await file.read()
+
+    if file.filename.endswith('.csv'):
+        extracted_data = chunking_service.process_csv_to_sentences(file_content)
+    else:
+        extracted_data = await file_service.process_file(file)
 
     # Chunking
     chunks = chunking_service.split_content(extracted_data, file.filename)
