@@ -3,6 +3,8 @@
 import { Message } from "@/types/chat";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export function ChatMessageItem({ message }: { message: Message }) {
   const isAi = message.role === "assistant";
@@ -29,11 +31,13 @@ export function ChatMessageItem({ message }: { message: Message }) {
         )}
       </Avatar>
       <div className="flex-1 space-y-2 overflow-hidden">
-        <p className="text-sm font-medium leading-none">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {isAi ? "Assistant" : "You"}
         </p>
-        <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-          {message.content}
+        <div className="prose prose-sm dark:prose-invert max-w-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {message.content}
+          </ReactMarkdown>
         </div>
       </div>
     </div>

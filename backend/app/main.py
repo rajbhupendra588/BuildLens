@@ -1,6 +1,7 @@
 import platform
 from importlib import metadata
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from qdrant_client import QdrantClient
 from app.core.config import settings
 from app.api.v1 import ingest, query, chat
@@ -16,6 +17,14 @@ except metadata.PackageNotFoundError:
 app = FastAPI(
     title="DocRAG API",
     version=__version__,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # URL frontend
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include API Routers

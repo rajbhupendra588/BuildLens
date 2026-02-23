@@ -8,10 +8,14 @@ import { ChatMessageItem } from "./chat-message-item";
 import { Loader2, SendHorizontal } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
+import { apiRequest } from "@/lib/api";
+import { Message } from "@/types/chat";
+import { Skeleton } from "../ui/skeleton";
 
 export function ChatInterface() {
   const { currentSessionId } = useChatStore();
-  const { messages, sendMessage, isTyping } = useChatStream();
+  const { messages, setMessages, sendMessage, isTyping } = useChatStream();
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -29,6 +33,26 @@ export function ChatInterface() {
       }
     }
   }, [messages]);
+
+  // Load chat history when session changes
+  useEffect(() => {
+    async function loadHistory() {
+      if (!currentSessionId) return;
+      setIsHistoryLoading(true);
+      try {
+        const history = await apiRequest<Message[]>(
+          `/chat/history/${currentSessionId}`,
+        );
+        setMessages(history);
+      } catch (error) {
+        console.error("Failed to load history", error);
+        setMessages([]);
+      } finally {
+        setIsHistoryLoading(false);
+      }
+    }
+    loadHistory();
+  }, [currentSessionId, setMessages]);
 
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
@@ -50,9 +74,16 @@ export function ChatInterface() {
       {/* Message Area */}
       <ScrollArea ref={scrollRef} className="flex-1 pr-4">
         <div className="flex flex-col py-4">
-          {messages.map((msg) => (
-            <ChatMessageItem key={msg.id} message={msg} />
-          ))}
+          {isHistoryLoading ? (
+            <div className="p-8 space-y-4">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-3/4" />
+            </div>
+          ) : (
+            messages.map((msg) => (
+              <ChatMessageItem key={msg.id} message={msg} />
+            ))
+          )}
           {isTyping &&
             messages.length > 0 &&
             messages[messages.length - 1].role !== "assistant" && (

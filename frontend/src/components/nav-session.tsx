@@ -7,6 +7,7 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
+  SidebarMenuItem,
 } from "./ui/sidebar";
 import { cn } from "@/lib/utils";
 import { MessageSquare } from "lucide-react";
@@ -19,15 +20,17 @@ export function NavSessions({ sessions }: { sessions: ChatSession[] }) {
       <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
       <SidebarMenu>
         {sessions.map((session) => (
-          <SidebarMenuButton
-            onClick={() => setCurrentSessionId(session.id)}
-            className={
-              cn(currentSessionId === session.id) && "bg-sidebar-accent"
-            }
-          >
-            <MessageSquare className="size-4" />
-            <span className="truncate">{session.title}</span>
-          </SidebarMenuButton>
+          <SidebarMenuItem key={session.id}>
+            <SidebarMenuButton
+              onClick={() => setCurrentSessionId(session.id)}
+              className={cn(
+                currentSessionId === session.id && "bg-sidebar-accent",
+              )}
+            >
+              <MessageSquare className="size-4" />
+              <span className="truncate">{session.title}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         ))}
       </SidebarMenu>
     </SidebarGroup>
