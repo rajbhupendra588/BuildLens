@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Sparkles } from "lucide-react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 export function ChatMessageItem({ message }: { message: Message }) {
   if (!message || !message.content) return null;
@@ -34,7 +36,50 @@ export function ChatMessageItem({ message }: { message: Message }) {
             : "bg-primary text-primary-foreground rounded-tr-sm prose-invert",
         )}
       >
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            code({ node, inline, className, children, ...props }: any) {
+              const match = /language-(\w+)/.exec(className || "");
+              return !inline && match ? (
+                <div className="relative my-2 group">
+                  <div className="absolute right-2 top-2 text-[10px] font-mono text-white/40 group-hover:text-white/70 transition-colors uppercase">
+                    {match[1]}
+                  </div>
+                  <SyntaxHighlighter
+                    style={vscDarkPlus}
+                    language={match[1]}
+                    PreTag="div"
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: "0.5rem",
+                      fontSize: "0.8rem",
+                    }}
+                    {...props}
+                  >
+                    {String(children).replace(/\n$/, "")}
+                  </SyntaxHighlighter>
+                </div>
+              ) : (
+                <code
+                  className={cn("bg-black/10 rounded px-1", className)}
+                  {...props}
+                >
+                  {children}
+                </code>
+              );
+            },
+            table({ children }) {
+              return (
+                <div className="overflow-x-auto my-4 border rounded-lg">
+                  <table className="min-w-full divide-y divide-border m-0">
+                    {children}
+                  </table>
+                </div>
+              );
+            },
+          }}
+        >
           {message.content}
         </ReactMarkdown>
       </div>
