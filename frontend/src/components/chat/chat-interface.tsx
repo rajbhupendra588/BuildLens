@@ -36,6 +36,9 @@ export function ChatInterface() {
 
   // Load chat history when session changes
   useEffect(() => {
+    // Clear stale messages immediately so we don't flash old content
+    setMessages([]);
+
     async function loadHistory() {
       if (!currentSessionId) return;
       setIsHistoryLoading(true);
@@ -64,7 +67,7 @@ export function ChatInterface() {
   if (!currentSessionId) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
-        Select a session or start a new chat to begin
+        Select a session or start a new chat to begin.
       </div>
     );
   }

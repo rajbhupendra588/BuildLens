@@ -32,7 +32,7 @@ async def ask_question(question: str):
 @router.post("/sessions")
 async def create_new_session(db: Session = Depends(get_session)):
     new_session = chat_history_service.create_session(db)
-    return {"session_id": new_session.id, "title": new_session.title}
+    return {"id": new_session.id, "title": new_session.title, "created_at": new_session.created_at}
 
 @router.get("/sessions")
 async def list_sessions(db: Session = Depends(get_session)):

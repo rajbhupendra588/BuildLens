@@ -27,8 +27,8 @@ export function NavSessions({ sessions }: { sessions: ChatSession[] }) {
     <SidebarGroup>
       <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
       <SidebarMenu>
-        {sessions.map((session) => (
-          <SidebarMenuItem key={session.id}>
+        {sessions.map((session, index) => (
+          <SidebarMenuItem key={session.id ?? index}>
             <SidebarMenuButton
               onClick={() => setCurrentSessionId(session.id)}
               className={cn(
