@@ -7,7 +7,7 @@ import json
 class LLMService:
     def __init__(self):
         self.base_url = settings.LLM.OLLAMA_BASE_URL
-        self.model = "kimi-k2.5:cloud"
+        self.model = "minimax-m2:cloud"
 
     async def generate_title(self, first_question: str) -> str:
         prompt = (
@@ -16,7 +16,7 @@ class LLMService:
             "Return only the title text without quotes or punctuation."
         )
 
-        title = await self.generate_answer(first_question, [])
+        title = await self.generate_answer(prompt, [])
         return title.strip().strip('"')
 
     async def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:

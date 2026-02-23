@@ -1,0 +1,713 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>Investments</title><style>
+/* cspell:disable-file */
+/* webkit printing magic: print all background colors */
+html {
+	-webkit-print-color-adjust: exact;
+}
+* {
+	box-sizing: border-box;
+	-webkit-print-color-adjust: exact;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+}
+@media only screen {
+	body {
+		margin: 2em auto;
+		max-width: 900px;
+		color: rgb(55, 53, 47);
+	}
+}
+
+body {
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+a,
+a.visited {
+	color: inherit;
+	text-decoration: underline;
+}
+
+.pdf-relative-link-path {
+	font-size: 80%;
+	color: #444;
+}
+
+h1,
+h2,
+h3 {
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	font-weight: 600;
+	margin-bottom: 0;
+}
+
+/* Override strong tags inside headings to maintain consistent weight */
+h1 strong,
+h2 strong,
+h3 strong {
+	font-weight: 600;
+}
+
+.page-title {
+	font-size: 2.5rem;
+	font-weight: 700;
+	margin-top: 0;
+	margin-bottom: 0.75em;
+}
+
+h1 {
+	font-size: 1.875rem;
+	margin-top: 1.875rem;
+}
+
+h2 {
+	font-size: 1.5rem;
+	margin-top: 1.5rem;
+}
+
+h3 {
+	font-size: 1.25rem;
+	margin-top: 1.25rem;
+}
+
+.source {
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	padding: 1.5em;
+	word-break: break-all;
+}
+
+.callout {
+	border-radius: 10px;
+	padding: 1rem;
+}
+
+figure {
+	margin: 1.25em 0;
+	page-break-inside: avoid;
+}
+
+figcaption {
+	opacity: 0.5;
+	font-size: 85%;
+	margin-top: 0.5em;
+}
+
+mark {
+	background-color: transparent;
+}
+
+.indented {
+	padding-left: 1.5em;
+}
+
+hr {
+	background: transparent;
+	display: block;
+	width: 100%;
+	height: 1px;
+	visibility: visible;
+	border: none;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+img {
+	max-width: 100%;
+}
+
+@media only print {
+	img {
+		max-height: 100vh;
+		object-fit: contain;
+	}
+}
+
+@page {
+	margin: 1in;
+}
+
+.collection-content {
+	font-size: 0.875rem;
+}
+
+.collection-content td {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.column-list {
+	display: flex;
+	justify-content: space-between;
+}
+
+.column {
+	padding: 0 1em;
+}
+
+.column:first-child {
+	padding-left: 0;
+}
+
+.column:last-child {
+	padding-right: 0;
+}
+
+.table_of_contents-item {
+	display: block;
+	font-size: 0.875rem;
+	line-height: 1.3;
+	padding: 0.125rem;
+}
+
+.table_of_contents-indent-1 {
+	margin-left: 1.5rem;
+}
+
+.table_of_contents-indent-2 {
+	margin-left: 3rem;
+}
+
+.table_of_contents-indent-3 {
+	margin-left: 4.5rem;
+}
+
+.table_of_contents-link {
+	text-decoration: none;
+	opacity: 0.7;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.18);
+}
+
+table,
+th,
+td {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+	border-collapse: collapse;
+}
+
+table {
+	border-left: none;
+	border-right: none;
+}
+
+th,
+td {
+	font-weight: normal;
+	padding: 0.25em 0.5em;
+	line-height: 1.5;
+	min-height: 1.5em;
+	text-align: left;
+}
+
+th {
+	color: rgba(55, 53, 47, 0.6);
+}
+
+ol,
+ul {
+	margin: 0;
+	margin-block-start: 0.6em;
+	margin-block-end: 0.6em;
+}
+
+li > ol:first-child,
+li > ul:first-child {
+	margin-block-start: 0.6em;
+}
+
+ul > li {
+	list-style: disc;
+}
+
+ul.to-do-list {
+	padding-inline-start: 0;
+}
+
+ul.to-do-list > li {
+	list-style: none;
+}
+
+.to-do-children-checked {
+	text-decoration: line-through;
+	opacity: 0.375;
+}
+
+ul.toggle > li {
+	list-style: none;
+}
+
+ul {
+	padding-inline-start: 1.7em;
+}
+
+ul > li {
+	padding-left: 0.1em;
+}
+
+ol {
+	padding-inline-start: 1.6em;
+}
+
+ol > li {
+	padding-left: 0.2em;
+}
+
+.mono ol {
+	padding-inline-start: 2em;
+}
+
+.mono ol > li {
+	text-indent: -0.4em;
+}
+
+.toggle {
+	padding-inline-start: 0em;
+	list-style-type: none;
+}
+
+/* Indent toggle children */
+.toggle > li > details {
+	padding-left: 1.7em;
+}
+
+.toggle > li > details > summary {
+	margin-left: -1.1em;
+}
+
+.selected-value {
+	display: inline-block;
+	padding: 0 0.5em;
+	background: rgba(206, 205, 202, 0.5);
+	border-radius: 3px;
+	margin-right: 0.5em;
+	margin-top: 0.3em;
+	margin-bottom: 0.3em;
+	white-space: nowrap;
+}
+
+.collection-title {
+	display: inline-block;
+	margin-right: 1em;
+}
+
+.page-description {
+	margin-bottom: 2em;
+}
+
+.simple-table {
+	margin-top: 1em;
+	font-size: 0.875rem;
+	empty-cells: show;
+}
+.simple-table td {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table th {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table-header-color {
+	background: rgb(247, 246, 243);
+	color: black;
+}
+.simple-table-header {
+	font-weight: 500;
+}
+
+time {
+	opacity: 0.5;
+}
+
+.icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	max-width: 1.2em;
+	max-height: 1.2em;
+	text-decoration: none;
+	vertical-align: text-bottom;
+	margin-right: 0.5em;
+}
+
+img.icon {
+	border-radius: 3px;
+}
+
+.callout img.notion-static-icon {
+	width: 1em;
+	height: 1em;
+}
+
+.callout p {
+	margin: 0;
+}
+
+.callout h1,
+.callout h2,
+.callout h3 {
+	margin: 0 0 0.6rem;
+}
+
+.user-icon {
+	width: 1.5em;
+	height: 1.5em;
+	border-radius: 100%;
+	margin-right: 0.5rem;
+}
+
+.user-icon-inner {
+	font-size: 0.8em;
+}
+
+.text-icon {
+	border: 1px solid #000;
+	text-align: center;
+}
+
+.page-cover-image {
+	display: block;
+	object-fit: cover;
+	width: 100%;
+	max-height: 30vh;
+}
+
+.page-header-icon {
+	font-size: 3rem;
+	margin-bottom: 1rem;
+}
+
+.page-header-icon-with-cover {
+	margin-top: -0.72em;
+	margin-left: 0.07em;
+}
+
+.page-header-icon img {
+	border-radius: 3px;
+}
+
+.link-to-page {
+	margin: 1em 0;
+	padding: 0;
+	border: none;
+	font-weight: 500;
+}
+
+p > .user {
+	opacity: 0.5;
+}
+
+td > .user,
+td > time {
+	white-space: nowrap;
+}
+
+input[type="checkbox"] {
+	transform: scale(1.5);
+	margin-right: 0.6em;
+	vertical-align: middle;
+}
+
+p {
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+
+.image {
+	border: none;
+	margin: 1.5em 0;
+	padding: 0;
+	border-radius: 0;
+	text-align: center;
+}
+
+.code,
+code {
+	background: rgba(135, 131, 120, 0.15);
+	border-radius: 3px;
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+	font-size: 85%;
+	tab-size: 2;
+}
+
+code {
+	color: #eb5757;
+}
+
+.code {
+	padding: 1.5em 1em;
+}
+
+.code-wrap {
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.code > code {
+	background: none;
+	padding: 0;
+	font-size: 100%;
+	color: inherit;
+}
+
+blockquote {
+	font-size: 1em;
+	margin: 1em 0;
+	padding-left: 1em;
+	border-left: 3px solid rgb(55, 53, 47);
+}
+
+blockquote.quote-large {
+	font-size: 1.25em;
+}
+
+.bookmark {
+	text-decoration: none;
+	max-height: 8em;
+	padding: 0;
+	display: flex;
+	width: 100%;
+	align-items: stretch;
+}
+
+.bookmark-title {
+	font-size: 0.85em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	height: 1.75em;
+	white-space: nowrap;
+}
+
+.bookmark-text {
+	display: flex;
+	flex-direction: column;
+}
+
+.bookmark-info {
+	flex: 4 1 180px;
+	padding: 12px 14px 14px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+}
+
+.bookmark-image {
+	width: 33%;
+	flex: 1 1 180px;
+	display: block;
+	position: relative;
+	object-fit: cover;
+	border-radius: 1px;
+}
+
+.bookmark-description {
+	color: rgba(55, 53, 47, 0.6);
+	font-size: 0.75em;
+	overflow: hidden;
+	max-height: 4.5em;
+	word-break: break-word;
+}
+
+.bookmark-href {
+	font-size: 0.75em;
+	margin-top: 0.25em;
+}
+
+.sans { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"; }
+.code { font-family: "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace; }
+.serif { font-family: Lyon-Text, Georgia, ui-serif, serif; }
+.mono { font-family: iawriter-mono, Nitti, Menlo, Courier, monospace; }
+.pdf .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK JP'; }
+.pdf:lang(zh-CN) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK SC'; }
+.pdf:lang(zh-TW) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK TC'; }
+.pdf:lang(ko-KR) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK KR'; }
+.pdf .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.pdf .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK JP'; }
+.pdf:lang(zh-CN) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK SC'; }
+.pdf:lang(zh-TW) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK TC'; }
+.pdf:lang(ko-KR) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK KR'; }
+.pdf .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.highlight-default {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray {
+	color: rgba(125, 122, 117, 1);
+	fill: rgba(125, 122, 117, 1);
+}
+.highlight-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.highlight-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.highlight-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.highlight-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.highlight-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.highlight-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.highlight-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.highlight-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.highlight-default_background {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray_background {
+	background: rgba(42, 28, 0, 0.07);
+}
+.highlight-brown_background {
+	background: rgba(139, 46, 0, 0.086);
+}
+.highlight-orange_background {
+	background: rgba(224, 101, 1, 0.129);
+}
+.highlight-yellow_background {
+	background: rgba(211, 168, 0, 0.137);
+}
+.highlight-teal_background {
+	background: rgba(0, 100, 45, 0.09);
+}
+.highlight-blue_background {
+	background: rgba(0, 124, 215, 0.094);
+}
+.highlight-purple_background {
+	background: rgba(102, 0, 178, 0.078);
+}
+.highlight-pink_background {
+	background: rgba(197, 0, 93, 0.086);
+}
+.highlight-red_background {
+	background: rgba(223, 22, 0, 0.094);
+}
+.block-color-default {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray {
+	color: rgba(125, 122, 117, 1);
+	fill: rgba(125, 122, 117, 1);
+}
+.block-color-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.block-color-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.block-color-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.block-color-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.block-color-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.block-color-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.block-color-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.block-color-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.block-color-default_background {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray_background {
+	background: rgba(240, 239, 237, 1);
+}
+.block-color-brown_background {
+	background: rgba(245, 237, 233, 1);
+}
+.block-color-orange_background {
+	background: rgba(251, 235, 222, 1);
+}
+.block-color-yellow_background {
+	background: rgba(249, 243, 220, 1);
+}
+.block-color-teal_background {
+	background: rgba(232, 241, 236, 1);
+}
+.block-color-blue_background {
+	background: rgba(229, 242, 252, 1);
+}
+.block-color-purple_background {
+	background: rgba(243, 235, 249, 1);
+}
+.block-color-pink_background {
+	background: rgba(250, 233, 241, 1);
+}
+.block-color-red_background {
+	background: rgba(252, 233, 231, 1);
+}
+.select-value-color-default { background-color: rgba(42, 28, 0, 0.07); }
+.select-value-color-gray { background-color: rgba(28, 19, 1, 0.11); }
+.select-value-color-brown { background-color: rgba(127, 51, 0, 0.156); }
+.select-value-color-orange { background-color: rgba(196, 88, 0, 0.203); }
+.select-value-color-yellow { background-color: rgba(209, 156, 0, 0.282); }
+.select-value-color-green { background-color: rgba(0, 96, 38, 0.156); }
+.select-value-color-blue { background-color: rgba(0, 118, 217, 0.203); }
+.select-value-color-purple { background-color: rgba(92, 0, 163, 0.141); }
+.select-value-color-pink { background-color: rgba(183, 0, 78, 0.152); }
+.select-value-color-red { background-color: rgba(206, 24, 0, 0.164); }
+
+.checkbox {
+	display: inline-flex;
+	vertical-align: text-bottom;
+	width: 16;
+	height: 16;
+	background-size: 16px;
+	margin-left: 2px;
+	margin-right: 5px;
+}
+
+.checkbox-on {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20width%3D%2216%22%20height%3D%2216%22%20fill%3D%22%2358A9D7%22%2F%3E%0A%3Cpath%20d%3D%22M6.71429%2012.2852L14%204.9995L12.7143%203.71436L6.71429%209.71378L3.28571%206.2831L2%207.57092L6.71429%2012.2852Z%22%20fill%3D%22white%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+
+.checkbox-off {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20x%3D%220.75%22%20y%3D%220.75%22%20width%3D%2214.5%22%20height%3D%2214.5%22%20fill%3D%22white%22%20stroke%3D%22%2336352F%22%20stroke-width%3D%221.5%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+	
+</style></head><body><article id="23997874-135b-8058-b020-d57aee5a76db" class="page sans"><header><div class="page-header-icon undefined"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/></div><h1 class="page-title" dir="auto">Investments</h1><p class="page-description" dir="auto"></p></header><div class="page-body"><table class="collection-content"><thead><tr><th><span class="icon property-icon"><img src="https://www.notion.so/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>Asset Name</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>Ticker</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/hashtag_gray.svg" style="width:14px;height:14px;display:block"/></span>Quantity</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/hashtag_gray.svg" style="width:14px;height:14px;display:block"/></span>Cost per share</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/list_gray.svg" style="width:14px;height:14px;display:block"/></span>Industry</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/hashtag_gray.svg" style="width:14px;height:14px;display:block"/></span>Current Price</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/formula_gray.svg" style="width:14px;height:14px;display:block"/></span>Total Cost</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/formula_gray.svg" style="width:14px;height:14px;display:block"/></span>Total Value</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/formula_gray.svg" style="width:14px;height:14px;display:block"/></span>Profit / Loss</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/formula_gray.svg" style="width:14px;height:14px;display:block"/></span>Profit / Loss  %</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/formula_gray.svg" style="width:14px;height:14px;display:block"/></span>Cost per share (USD)</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/arrow-circle-down_gray.svg" style="width:14px;height:14px;display:block"/></span>Investment Type</th><th><span class="icon property-icon"><img src="https://www.notion.so/icons/arrow-northeast_gray.svg" style="width:14px;height:14px;display:block"/></span>Accounts</th></tr></thead><tbody><tr id="23997874-135b-8077-80c6-c7ddc1294b44"><td class="cell-title"><a href="https://www.notion.so/Dogecoin-23997874135b807780c6c7ddc1294b44?pvs=21"><img class="icon" src="https://upload.wikimedia.org/wikipedia/en/d/d0/Dogecoin_Logo.png"/>Dogecoin</a></td><td class="cell-xmmM">BINANCE:DOGEUSDT</td><td class="cell-m\=a">284.94164102</td><td class="cell-I&lt;at"></td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 2.98</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 849.13</td><td class="cell-ihbs">THB 849.13</td><td class="cell-txp?"></td><td class="cell-HnPF">US$0.00</td><td class="cell-wZmW"><span class="selected-value select-value-color-red">Crypto</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Bitkub-23997874135b8067bb82e2c45e001b18?pvs=21">Bitkub</a></td></tr><tr id="23997874-135b-8004-9958-ec429779f44d"><td class="cell-title"><a href="https://www.notion.so/Bitcoin-23997874135b80049958ec429779f44d?pvs=21"><img class="icon" src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Bitcoin.svg/2048px-Bitcoin.svg.png"/>Bitcoin</a></td><td class="cell-xmmM">BINANCE:BTCUSDT</td><td class="cell-m\=a">0.00252123</td><td class="cell-I&lt;at"></td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 2,045,958.59</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 5,158.33</td><td class="cell-ihbs">THB 5,158.33</td><td class="cell-txp?"></td><td class="cell-HnPF">US$0.00</td><td class="cell-wZmW"><span class="selected-value select-value-color-red">Crypto</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Bitkub-23997874135b8067bb82e2c45e001b18?pvs=21">Bitkub</a></td></tr><tr id="23997874-135b-80a2-be61-df9b5cf8ab60"><td class="cell-title"><a href="https://www.notion.so/iShares-Silver-Trust-23997874135b80a2be61df9b5cf8ab60?pvs=21"><img class="icon" src="https://logos.stocktwits-cdn.com/SLV.png"/>iShares Silver Trust</a></td><td class="cell-xmmM">SLV</td><td class="cell-m\=a">1.3718964</td><td class="cell-I&lt;at">THB 1,074.65</td><td class="cell-y\zi"><span class="selected-value select-value-color-blue">ETFs &amp; Commodities</span></td><td class="cell-b?;c">THB 2,465.61</td><td class="cell-GyjI">THB 1,474.31</td><td class="cell-`cs&lt;">THB 3,382.56</td><td class="cell-ihbs">THB 1,908.25</td><td class="cell-txp?">129.4337691341%</td><td class="cell-HnPF">US$33.58</td><td class="cell-wZmW"><span class="selected-value select-value-color-blue">ETF</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8091-8f03-c34d97d66422"><td class="cell-title"><a href="https://www.notion.so/Intel-Corp-23997874135b80918f03c34d97d66422?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTIG2pLW86ZhaI0VYSXLm1NiWzxKQJ79xoMzw&amp;s"/>Intel Corp</a></td><td class="cell-xmmM">INTC</td><td class="cell-m\=a">1.4814863</td><td class="cell-I&lt;at">THB 626.75</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 1,376.17</td><td class="cell-GyjI">THB 928.52</td><td class="cell-`cs&lt;">THB 2,038.78</td><td class="cell-ihbs">THB 1,110.26</td><td class="cell-txp?">119.5723972876%</td><td class="cell-HnPF">US$19.59</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80ec-a9bd-d02bbdac438a"><td class="cell-title"><a href="https://www.notion.so/Alphabet-Inc-23997874135b80eca9bdd02bbdac438a?pvs=21"><img class="icon" src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/768px-Google_%22G%22_logo.svg.png"/>Alphabet Inc.</a></td><td class="cell-xmmM">GOOGL</td><td class="cell-m\=a">1.474584</td><td class="cell-I&lt;at">THB 4,745.88</td><td class="cell-y\zi"><span class="selected-value select-value-color-pink">Communication Services</span></td><td class="cell-b?;c">THB 9,814.85</td><td class="cell-GyjI">THB 6,998.20</td><td class="cell-`cs&lt;">THB 14,472.82</td><td class="cell-ihbs">THB 7,474.62</td><td class="cell-txp?">106.8077996072%</td><td class="cell-HnPF">US$148.31</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="2d197874-135b-80c6-abfa-e948f8b34b63"><td class="cell-title"><a href="https://www.notion.so/Mind-Medicine-2d197874135b80c6abfae948f8b34b63?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>Mind Medicine</a></td><td class="cell-xmmM">MNMD</td><td class="cell-m\=a">3.5039818</td><td class="cell-I&lt;at">THB 273.77</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 532.74</td><td class="cell-GyjI">THB 959.29</td><td class="cell-`cs&lt;">THB 1,866.71</td><td class="cell-ihbs">THB 907.43</td><td class="cell-txp?">94.5940022647%</td><td class="cell-HnPF">US$8.56</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8000-a629-e9be816a9b1f"><td class="cell-title"><a href="https://www.notion.so/ASML-Holding-NV-23997874135b8000a629e9be816a9b1f?pvs=21"><img class="icon" src="https://upload.wikimedia.org/wikipedia/en/thumb/6/6c/ASML_Holding_N.V._logo.svg/1280px-ASML_Holding_N.V._logo.svg.png"/>ASML Holding NV</a></td><td class="cell-xmmM">ASML</td><td class="cell-m\=a">0.1227616</td><td class="cell-I&lt;at">THB 24,243.87</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 46,360.46</td><td class="cell-GyjI">THB 2,976.22</td><td class="cell-`cs&lt;">THB 5,691.28</td><td class="cell-ihbs">THB 2,715.07</td><td class="cell-txp?">91.2254932896%</td><td class="cell-HnPF">US$757.62</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8004-af23-d8c6a6459114"><td class="cell-title"><a href="https://www.notion.so/TransMedics-Group-Inc-23997874135b8004af23d8c6a6459114?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRM93xoBZgI0EkIHy6bQQyyxu2ra-HHjdZwDw&amp;s"/>TransMedics Group, Inc.</a></td><td class="cell-xmmM">TMDX</td><td class="cell-m\=a">1.2887453</td><td class="cell-I&lt;at">THB 2,168.96</td><td class="cell-y\zi"><span class="selected-value select-value-color-green">Healthcare</span></td><td class="cell-b?;c">THB 4,090.27</td><td class="cell-GyjI">THB 2,795.24</td><td class="cell-`cs&lt;">THB 5,271.32</td><td class="cell-ihbs">THB 2,476.08</td><td class="cell-txp?">88.5820854234%</td><td class="cell-HnPF">US$67.78</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8021-884e-dfb37c3db223"><td class="cell-title"><a href="https://www.notion.so/Navitas-Semiconductor-Corporation-23997874135b8021884edfb37c3db223?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/navitas-semiconductor--600.png"/>Navitas Semiconductor Corporation</a></td><td class="cell-xmmM">NVTS</td><td class="cell-m\=a">6.4376857</td><td class="cell-I&lt;at">THB 147.58</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 255.02</td><td class="cell-GyjI">THB 950.07</td><td class="cell-`cs&lt;">THB 1,641.74</td><td class="cell-ihbs">THB 691.66</td><td class="cell-txp?">72.8011925735%</td><td class="cell-HnPF">US$4.61</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8087-ad4a-f3dd0c02a3b4"><td class="cell-title"><a href="https://www.notion.so/Taiwan-Semiconductor-Manufacturing-Company-Ltd-23997874135b8087ad4af3dd0c02a3b4?pvs=21"><img class="icon" src="https://upload.wikimedia.org/wikipedia/en/thumb/6/63/Tsmc.svg/1200px-Tsmc.svg.png"/>Taiwan Semiconductor Manufacturing Company Ltd.</a></td><td class="cell-xmmM">TSM</td><td class="cell-m\=a">0.1998919</td><td class="cell-I&lt;at">THB 7,389.49</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 11,387.38</td><td class="cell-GyjI">THB 1,477.10</td><td class="cell-`cs&lt;">THB 2,276.25</td><td class="cell-ihbs">THB 799.15</td><td class="cell-txp?">54.1023805432%</td><td class="cell-HnPF">US$230.92</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="24197874-135b-8003-86c5-dcb943b14c8d"><td class="cell-title"><a href="https://www.notion.so/Cameco-Corp-24197874135b800386c5dcb943b14c8d?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/cameco--600.png"/>Cameco Corp</a></td><td class="cell-xmmM">CCJ</td><td class="cell-m\=a">0.6674154</td><td class="cell-I&lt;at">THB 2,450.60</td><td class="cell-y\zi"><span class="selected-value select-value-color-yellow">Energy</span></td><td class="cell-b?;c">THB 3,724.54</td><td class="cell-GyjI">THB 1,635.57</td><td class="cell-`cs&lt;">THB 2,485.82</td><td class="cell-ihbs">THB 850.25</td><td class="cell-txp?">51.9848200441%</td><td class="cell-HnPF">US$76.58</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23e97874-135b-8024-8c30-d8720ebda5f9"><td class="cell-title"><a href="https://www.notion.so/Rocket-Lab-USA-Inc-23e97874135b80248c30d8720ebda5f9?pvs=21"><img class="icon" src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Rocket_Lab_logo.svg/1200px-Rocket_Lab_logo.svg.png"/>Rocket Lab USA, Inc.</a></td><td class="cell-xmmM">RKLB</td><td class="cell-m\=a">2.0667797</td><td class="cell-I&lt;at">THB 1,447.75</td><td class="cell-y\zi"><span class="selected-value select-value-color-default">Industrials</span></td><td class="cell-b?;c">THB 2,174.82</td><td class="cell-GyjI">THB 2,992.18</td><td class="cell-`cs&lt;">THB 4,494.87</td><td class="cell-ihbs">THB 1,502.69</td><td class="cell-txp?">50.2206872734%</td><td class="cell-HnPF">US$45.24</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8064-b45e-e697fdecd51c"><td class="cell-title"><a href="https://www.notion.so/Advanced-Micro-Devices-23997874135b8064b45ee697fdecd51c?pvs=21"><img class="icon" src="https://img.icons8.com/?size=100&amp;id=XZpuIviKKqAk&amp;format=png&amp;color=000000"/>Advanced Micro Devices</a></td><td class="cell-xmmM">AMD</td><td class="cell-m\=a">1.5112742</td><td class="cell-I&lt;at">THB 4,193.89</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 6,157.80</td><td class="cell-GyjI">THB 6,338.12</td><td class="cell-`cs&lt;">THB 9,306.12</td><td class="cell-ihbs">THB 2,968.01</td><td class="cell-txp?">46.8278853284%</td><td class="cell-HnPF">US$131.06</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="24197874-135b-8033-8cc8-d05a5fe25efc"><td class="cell-title"><a href="https://www.notion.so/AST-SpaceMobile-Inc-24197874135b80338cc8d05a5fe25efc?pvs=21"><img class="icon" src="https://upload.wikimedia.org/wikipedia/commons/2/24/AST_SpaceMobile_logo.svg"/>AST SpaceMobile Inc</a></td><td class="cell-xmmM">ASTS</td><td class="cell-m\=a">1.2166388</td><td class="cell-I&lt;at">THB 1,801.91</td><td class="cell-y\zi"><span class="selected-value select-value-color-default">Industrials</span></td><td class="cell-b?;c">THB 2,534.96</td><td class="cell-GyjI">THB 2,192.27</td><td class="cell-`cs&lt;">THB 3,084.13</td><td class="cell-ihbs">THB 891.86</td><td class="cell-txp?">40.681832056%</td><td class="cell-HnPF">US$56.31</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8060-8ead-d1791ca2f2e8"><td class="cell-title"><a href="https://www.notion.so/Tesla-Inc-23997874135b80608eadd1791ca2f2e8?pvs=21"><img class="icon" src="https://img.icons8.com/?size=100&amp;id=34784&amp;format=png&amp;color=000000"/>Tesla, Inc.</a></td><td class="cell-xmmM">TSLA</td><td class="cell-m\=a">0.6613239</td><td class="cell-I&lt;at">THB 8,981.65</td><td class="cell-y\zi"><span class="selected-value select-value-color-gray">Consumer Discretionary</span></td><td class="cell-b?;c">THB 12,546.36</td><td class="cell-GyjI">THB 5,939.78</td><td class="cell-`cs&lt;">THB 8,297.21</td><td class="cell-ihbs">THB 2,357.43</td><td class="cell-txp?">39.6888099625%</td><td class="cell-HnPF">US$280.68</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80e6-a557-fbac76959a14"><td class="cell-title"><a href="https://www.notion.so/NetFlix-Inc-23997874135b80e6a557fbac76959a14?pvs=21"><img class="icon" src="https://img.icons8.com/?size=100&amp;id=ortlsYTZxMvT&amp;format=png&amp;color=000000"/>NetFlix Inc</a></td><td class="cell-xmmM">NFLX</td><td class="cell-m\=a">3.9083261</td><td class="cell-I&lt;at">THB 1,741.03</td><td class="cell-y\zi"><span class="selected-value select-value-color-pink">Communication Services</span></td><td class="cell-b?;c">THB 2,368.89</td><td class="cell-GyjI">THB 6,804.51</td><td class="cell-`cs&lt;">THB 9,258.39</td><td class="cell-ihbs">THB 2,453.88</td><td class="cell-txp?">36.0625606681%</td><td class="cell-HnPF">US$54.41</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-805f-a701-ee1969b67693"><td class="cell-title"><a href="https://www.notion.so/Nvidia-Corp-23997874135b805fa701ee1969b67693?pvs=21"><img class="icon" src="https://img.icons8.com/?size=100&amp;id=yqf95864UzeQ&amp;format=png&amp;color=000000"/>Nvidia Corp</a></td><td class="cell-xmmM">NVDA</td><td class="cell-m\=a">1.6917638</td><td class="cell-I&lt;at">THB 4,455.14</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 5,951.30</td><td class="cell-GyjI">THB 7,537.04</td><td class="cell-`cs&lt;">THB 10,068.19</td><td class="cell-ihbs">THB 2,531.15</td><td class="cell-txp?">33.5827830326%</td><td class="cell-HnPF">US$139.22</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80ed-9283-d2cf7a60d11b"><td class="cell-title"><a href="https://www.notion.so/Apple-Inc-23997874135b80ed9283d2cf7a60d11b?pvs=21"><img class="icon" src="https://img.icons8.com/ios-filled/250/FFFFFF/mac-os.png"/>Apple Inc.</a></td><td class="cell-xmmM">AAPL</td><td class="cell-m\=a">2.0502755</td><td class="cell-I&lt;at">THB 6,278.75</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 8,315.21</td><td class="cell-GyjI">THB 12,873.17</td><td class="cell-`cs&lt;">THB 17,048.47</td><td class="cell-ihbs">THB 4,175.30</td><td class="cell-txp?">32.4341628509%</td><td class="cell-HnPF">US$196.21</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-809d-a352-d4173890fcbb"><td class="cell-title"><a href="https://www.notion.so/99-99-Gold-by-MTS-23997874135b809da352d4173890fcbb?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTcR_DYYBJedpJ1voLz8vNuzoObARTsfcL2Lw&amp;s"/>99.99% Gold by MTS</a></td><td class="cell-xmmM">MTS-GOLD</td><td class="cell-m\=a">0.0295</td><td class="cell-I&lt;at">THB 83,439.83</td><td class="cell-y\zi"><span class="selected-value select-value-color-blue">ETFs &amp; Commodities</span></td><td class="cell-b?;c">THB 109,196.07</td><td class="cell-GyjI">THB 2,461.47</td><td class="cell-`cs&lt;">THB 3,221.28</td><td class="cell-ihbs">THB 759.81</td><td class="cell-txp?">30.8680398798%</td><td class="cell-HnPF">US$2,607.49</td><td class="cell-wZmW"><span class="selected-value select-value-color-brown">GOLD</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80cd-80f2-f3a82354c6fe"><td class="cell-title"><a href="https://www.notion.so/Schwab-US-Dividend-Equity-ETF-23997874135b80cd80f2f3a82354c6fe?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/schwab--600.png"/>Schwab US Dividend  Equity ETF</a></td><td class="cell-xmmM">SCHD</td><td class="cell-m\=a">1.725991</td><td class="cell-I&lt;at">THB 801.40</td><td class="cell-y\zi"><span class="selected-value select-value-color-blue">ETFs &amp; Commodities</span></td><td class="cell-b?;c">THB 979.34</td><td class="cell-GyjI">THB 1,383.21</td><td class="cell-`cs&lt;">THB 1,690.33</td><td class="cell-ihbs">THB 307.12</td><td class="cell-txp?">22.2036436237%</td><td class="cell-HnPF">US$25.04</td><td class="cell-wZmW"><span class="selected-value select-value-color-blue">ETF</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8076-a557-c11be696a3fd"><td class="cell-title"><a href="https://www.notion.so/Applovin-Corporation-23997874135b8076a557c11be696a3fd?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTNuA1MFX7lPxJz5mdmX2WDtNbQwT5pukcD3Q&amp;s"/>Applovin Corporation</a></td><td class="cell-xmmM">APP</td><td class="cell-m\=a">0.0974859</td><td class="cell-I&lt;at">THB 10,352.76</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 11,876.47</td><td class="cell-GyjI">THB 1,009.25</td><td class="cell-`cs&lt;">THB 1,157.79</td><td class="cell-ihbs">THB 148.54</td><td class="cell-txp?">14.7179109725%</td><td class="cell-HnPF">US$323.52</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8082-b153-d490649ef157"><td class="cell-title"><a href="https://www.notion.so/Airbnb-Inc-23997874135b8082b153d490649ef157?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>Airbnb, Inc.</a></td><td class="cell-xmmM">ABNB</td><td class="cell-m\=a">2.4729502</td><td class="cell-I&lt;at">THB 3,427.29</td><td class="cell-y\zi"><span class="selected-value select-value-color-gray">Consumer Discretionary</span></td><td class="cell-b?;c">THB 3,922.78</td><td class="cell-GyjI">THB 8,475.52</td><td class="cell-`cs&lt;">THB 9,700.84</td><td class="cell-ihbs">THB 1,225.32</td><td class="cell-txp?">14.4571950433%</td><td class="cell-HnPF">US$107.10</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80bb-979b-ebf1250b4a94"><td class="cell-title"><a href="https://www.notion.so/Meta-Platforms-Inc-23997874135b80bb979bebf1250b4a94?pvs=21"><img class="icon" src="https://cdn-icons-png.flaticon.com/512/6033/6033716.png"/>Meta Platforms, Inc.</a></td><td class="cell-xmmM">META</td><td class="cell-m\=a">0.257767</td><td class="cell-I&lt;at">THB 18,456.65</td><td class="cell-y\zi"><span class="selected-value select-value-color-pink">Communication Services</span></td><td class="cell-b?;c">THB 20,188.56</td><td class="cell-GyjI">THB 4,757.52</td><td class="cell-`cs&lt;">THB 5,203.94</td><td class="cell-ihbs">THB 446.43</td><td class="cell-txp?">9.3836638827%</td><td class="cell-HnPF">US$576.77</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8095-849d-fc92c31c1be7"><td class="cell-title"><a href="https://www.notion.so/The-Walt-Disney-Company-23997874135b8095849dfc92c31c1be7?pvs=21"><img class="icon" src="https://img.icons8.com/fluent/512/disney-1.png"/>The Walt Disney Company</a></td><td class="cell-xmmM">DIS</td><td class="cell-m\=a">0.477878</td><td class="cell-I&lt;at">THB 2,964.24</td><td class="cell-y\zi"><span class="selected-value select-value-color-pink">Communication Services</span></td><td class="cell-b?;c">THB 3,207.34</td><td class="cell-GyjI">THB 1,416.55</td><td class="cell-`cs&lt;">THB 1,532.72</td><td class="cell-ihbs">THB 116.17</td><td class="cell-txp?">8.2010903301%</td><td class="cell-HnPF">US$92.63</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="2d197874-135b-8051-b570-e81168900780"><td class="cell-title"><a href="https://www.notion.so/Edwards-Lifesciences-2d197874135b8051b570e81168900780?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>Edwards Lifesciences</a></td><td class="cell-xmmM">EW</td><td class="cell-m\=a">0.6492387</td><td class="cell-I&lt;at">THB 2,348.28</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 2,517.23</td><td class="cell-GyjI">THB 1,524.59</td><td class="cell-`cs&lt;">THB 1,634.28</td><td class="cell-ihbs">THB 109.69</td><td class="cell-txp?">7.1946275572%</td><td class="cell-HnPF">US$73.38</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8086-bb6a-f48166c6f456"><td class="cell-title"><a href="https://www.notion.so/Amazon-Com-Inc-23997874135b8086bb6af48166c6f456?pvs=21"><img class="icon" src="https://img.icons8.com/?size=100&amp;id=21295&amp;format=png&amp;color=000000"/>Amazon.Com Inc</a></td><td class="cell-xmmM">AMZN</td><td class="cell-m\=a">0.860523</td><td class="cell-I&lt;at">THB 6,219.13</td><td class="cell-y\zi"><span class="selected-value select-value-color-gray">Consumer Discretionary</span></td><td class="cell-b?;c">THB 6,503.64</td><td class="cell-GyjI">THB 5,351.70</td><td class="cell-`cs&lt;">THB 5,596.53</td><td class="cell-ihbs">THB 244.83</td><td class="cell-txp?">4.574755633%</td><td class="cell-HnPF">US$194.35</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="24297874-135b-8073-a334-db8b4fff04f8"><td class="cell-title"><a href="https://www.notion.so/Vanguard-S-P-500-ETF-24297874135b8073a334db8b4fff04f8?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>Vanguard S&amp;P 500 ETF</a></td><td class="cell-xmmM">VOO</td><td class="cell-m\=a">0.0528583</td><td class="cell-I&lt;at">THB 18,727.20</td><td class="cell-y\zi"><span class="selected-value select-value-color-blue">ETFs &amp; Commodities</span></td><td class="cell-b?;c">THB 19,582.12</td><td class="cell-GyjI">THB 989.89</td><td class="cell-`cs&lt;">THB 1,035.08</td><td class="cell-ihbs">THB 45.19</td><td class="cell-txp?">4.5651245248%</td><td class="cell-HnPF">US$585.23</td><td class="cell-wZmW"><span class="selected-value select-value-color-blue">ETF</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="2d197874-135b-80ce-acec-e4503452fbe1"><td class="cell-title"><a href="https://www.notion.so/Vanguard-S-P-500-2d197874135b80ceacece4503452fbe1?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>Vanguard S&amp;P 500</a></td><td class="cell-xmmM">VOO</td><td class="cell-m\=a">0.2541356</td><td class="cell-I&lt;at">THB 18,862.04</td><td class="cell-y\zi"><span class="selected-value select-value-color-blue">ETFs &amp; Commodities</span></td><td class="cell-b?;c">THB 19,582.12</td><td class="cell-GyjI">THB 4,793.52</td><td class="cell-`cs&lt;">THB 4,976.51</td><td class="cell-ihbs">THB 183.00</td><td class="cell-txp?">3.8176146377%</td><td class="cell-HnPF">US$589.44</td><td class="cell-wZmW"><span class="selected-value select-value-color-blue">ETF</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8020-ba56-c8f5830c68bb"><td class="cell-title"><a href="https://www.notion.so/BERKSHIRE-HATHAWAY-23997874135b8020ba56c8f5830c68bb?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/berkshire-hathaway--600.png"/>BERKSHIRE HATHAWAY</a></td><td class="cell-xmmM">BRK.B</td><td class="cell-m\=a">0.0644906</td><td class="cell-I&lt;at">THB 14,914.97</td><td class="cell-y\zi"><span class="selected-value select-value-color-brown">Financials</span></td><td class="cell-b?;c">THB 15,462.61</td><td class="cell-GyjI">THB 961.88</td><td class="cell-`cs&lt;">THB 997.19</td><td class="cell-ihbs">THB 35.32</td><td class="cell-txp?">3.6717472445%</td><td class="cell-HnPF">US$466.09</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="24297874-135b-8014-a5ad-f92bdf3c6acf"><td class="cell-title"><a href="https://www.notion.so/Invesco-NASDAQ-100-ETF-24297874135b8014a5adf92bdf3c6acf?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>Invesco NASDAQ 100 ETF</a></td><td class="cell-xmmM">QQQM</td><td class="cell-m\=a">0.6349741</td><td class="cell-I&lt;at">THB 7,608.51</td><td class="cell-y\zi"><span class="selected-value select-value-color-blue">ETFs &amp; Commodities</span></td><td class="cell-b?;c">THB 7,734.57</td><td class="cell-GyjI">THB 4,831.21</td><td class="cell-`cs&lt;">THB 4,911.25</td><td class="cell-ihbs">THB 80.04</td><td class="cell-txp?">1.6568289981%</td><td class="cell-HnPF">US$237.77</td><td class="cell-wZmW"><span class="selected-value select-value-color-blue">ETF</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="2d497874-135b-8071-af28-d0e003e9c6c9"><td class="cell-title"><a href="https://www.notion.so/iShare-0-3-Month-Treasury-Bond-ETF-2d497874135b8071af28d0e003e9c6c9?pvs=21"><img class="icon" src="https://logos.stocktwits-cdn.com/SLV.png"/>iShare 0-3 Month Treasury Bond ETF</a></td><td class="cell-xmmM">SGOV</td><td class="cell-m\=a">31.9569893</td><td class="cell-I&lt;at">THB 3,115.91</td><td class="cell-y\zi"><span class="selected-value select-value-color-blue">ETFs &amp; Commodities</span></td><td class="cell-b?;c">THB 3,128.19</td><td class="cell-GyjI">THB 99,575.10</td><td class="cell-`cs&lt;">THB 99,967.53</td><td class="cell-ihbs">THB 392.43</td><td class="cell-txp?">0.3941063766%</td><td class="cell-HnPF">US$97.37</td><td class="cell-wZmW"><span class="selected-value select-value-color-blue">ETF</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8098-9b99-d610740b2d70"><td class="cell-title"><a href="https://www.notion.so/VISA-Inc-23997874135b80989b99d610740b2d70?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3V1gApW44x8AYf4lZB7KVxWjMupExtAX2OA&amp;s"/>VISA Inc.</a></td><td class="cell-xmmM">V</td><td class="cell-m\=a">0.2946001</td><td class="cell-I&lt;at">THB 9,693.15</td><td class="cell-y\zi"><span class="selected-value select-value-color-brown">Financials</span></td><td class="cell-b?;c">THB 9,683.30</td><td class="cell-GyjI">THB 2,855.60</td><td class="cell-`cs&lt;">THB 2,852.70</td><td class="cell-ihbs">-THB 2.90</td><td class="cell-txp?">-0.101618153%</td><td class="cell-HnPF">US$302.91</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8016-8e14-cd19dc917c93"><td class="cell-title"><a href="https://www.notion.so/Microsoft-Corp-23997874135b80168e14cd19dc917c93?pvs=21"><img class="icon" src="https://img.icons8.com/?size=100&amp;id=22989&amp;format=png&amp;color=000000"/>Microsoft Corp</a></td><td class="cell-xmmM">MSFT</td><td class="cell-m\=a">0.5485352</td><td class="cell-I&lt;at">THB 12,126.67</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 12,079.24</td><td class="cell-GyjI">THB 6,651.91</td><td class="cell-`cs&lt;">THB 6,625.89</td><td class="cell-ihbs">-THB 26.02</td><td class="cell-txp?">-0.3911213878%</td><td class="cell-HnPF">US$378.96</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="24197874-135b-801a-8583-d7f01faa0001"><td class="cell-title"><a href="https://www.notion.so/Intuitive-Surgical-Inc-24197874135b801a8583d7f01faa0001?pvs=21"><img class="icon" src="https://d2q79iu7y748jz.cloudfront.net/s/_squarelogo/438e56909a93a244882bfe33c96cf828"/>Intuitive Surgical Inc</a></td><td class="cell-xmmM">ISRG</td><td class="cell-m\=a">0.0671246</td><td class="cell-I&lt;at">THB 16,082.20</td><td class="cell-y\zi"><span class="selected-value select-value-color-green">Healthcare</span></td><td class="cell-b?;c">THB 15,293.74</td><td class="cell-GyjI">THB 1,079.51</td><td class="cell-`cs&lt;">THB 1,026.59</td><td class="cell-ihbs">-THB 52.93</td><td class="cell-txp?">-4.9026874433%</td><td class="cell-HnPF">US$502.57</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8092-98f9-d77ea8d26dad"><td class="cell-title"><a href="https://www.notion.so/Procter-Gamble-Company-23997874135b809298f9d77ea8d26dad?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRjuUIfeYl7BhVF8ULw2p0XTiQTSZubX-S4vw&amp;s"/>Procter &amp; Gamble Company</a></td><td class="cell-xmmM">PG</td><td class="cell-m\=a">0.2595847</td><td class="cell-I&lt;at">THB 5,541.47</td><td class="cell-y\zi"><span class="selected-value select-value-color-purple">Consumer Staples</span></td><td class="cell-b?;c">THB 5,078.63</td><td class="cell-GyjI">THB 1,438.48</td><td class="cell-`cs&lt;">THB 1,318.33</td><td class="cell-ihbs">-THB 120.15</td><td class="cell-txp?">-8.3522964123%</td><td class="cell-HnPF">US$173.17</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="2d197874-135b-8037-a16c-c7466d34e219"><td class="cell-title"><a href="https://www.notion.so/Ferrari-2d197874135b8037a16cc7466d34e219?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>Ferrari</a></td><td class="cell-xmmM">RACE</td><td class="cell-m\=a">0.1491101</td><td class="cell-I&lt;at">THB 12,684.57</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 11,212.79</td><td class="cell-GyjI">THB 1,891.40</td><td class="cell-`cs&lt;">THB 1,671.94</td><td class="cell-ihbs">-THB 219.46</td><td class="cell-txp?">-11.6029159838%</td><td class="cell-HnPF">US$396.39</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23e97874-135b-80d9-b74a-e9622183ab5e"><td class="cell-title"><a href="https://www.notion.so/Oklo-Inc-23e97874135b80d9b74ae9622183ab5e?pvs=21"><img class="icon" src="https://pbs.twimg.com/profile_images/1489645535908696067/RxblrrXq_400x400.jpg"/>Oklo Inc.</a></td><td class="cell-xmmM">OKLO</td><td class="cell-m\=a">1.3162272</td><td class="cell-I&lt;at">THB 2,245.24</td><td class="cell-y\zi"><span class="selected-value select-value-color-yellow">Energy</span></td><td class="cell-b?;c">THB 1,941.26</td><td class="cell-GyjI">THB 2,955.25</td><td class="cell-`cs&lt;">THB 2,555.14</td><td class="cell-ihbs">-THB 400.11</td><td class="cell-txp?">-13.5388644421%</td><td class="cell-HnPF">US$70.16</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23e97874-135b-80bf-b2b8-e04c26d30983"><td class="cell-title"><a href="https://www.notion.so/Palantir-Technologies-Inc-23e97874135b80bfb2b8e04c26d30983?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/palantir--600.png"/>Palantir Technologies Inc.</a></td><td class="cell-xmmM">PLTR</td><td class="cell-m\=a">0.3134107</td><td class="cell-I&lt;at">THB 5,085.43</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 4,020.30</td><td class="cell-GyjI">THB 1,593.83</td><td class="cell-`cs&lt;">THB 1,260.01</td><td class="cell-ihbs">-THB 333.82</td><td class="cell-txp?">-20.9447382031%</td><td class="cell-HnPF">US$158.92</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="24197874-135b-8064-95ac-cbf5a7b9f5b1"><td class="cell-title"><a href="https://www.notion.so/Crowdstrike-Holdings-Inc-24197874135b806495accbf5a7b9f5b1?pvs=21"><img class="icon" src="https://yt3.googleusercontent.com/8zmA9WKMymIILnEJkzY2fDuYzteNaMa_0a5qTBAq8egWEMmlfiqzjbKc1nA3FgdDPDXqmQW2XWk=s900-c-k-c0x00ffffff-no-rj"/>Crowdstrike Holdings Inc</a></td><td class="cell-xmmM">CRWD</td><td class="cell-m\=a">0.1082356</td><td class="cell-I&lt;at">THB 15,110.48</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 10,996.96</td><td class="cell-GyjI">THB 1,635.49</td><td class="cell-`cs&lt;">THB 1,190.26</td><td class="cell-ihbs">-THB 445.23</td><td class="cell-txp?">-27.2229604883%</td><td class="cell-HnPF">US$472.20</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23e97874-135b-80e5-baf2-e3d613204dbd"><td class="cell-title"><a href="https://www.notion.so/IonQ-Inc-23e97874135b80e5baf2e3d613204dbd?pvs=21"><img class="icon" src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/IonQ_corp_logo.svg/250px-IonQ_corp_logo.svg.png"/>IonQ Inc.</a></td><td class="cell-xmmM">IONQ</td><td class="cell-m\=a">2.2945173</td><td class="cell-I&lt;at">THB 1,384.13</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 972.81</td><td class="cell-GyjI">THB 3,175.91</td><td class="cell-`cs&lt;">THB 2,232.13</td><td class="cell-ihbs">-THB 943.78</td><td class="cell-txp?">-29.7168618555%</td><td class="cell-HnPF">US$43.25</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-8085-bae4-d7f41a4e308b"><td class="cell-title"><a href="https://www.notion.so/Super-Micro-Computer-Inc-23997874135b8085bae4d7f41a4e308b?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/super-micro-computer--600.png"/>Super Micro Computer, Inc.</a></td><td class="cell-xmmM">SMCI</td><td class="cell-m\=a">1.2252492</td><td class="cell-I&lt;at">THB 1,470.04</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 1,005.89</td><td class="cell-GyjI">THB 1,801.17</td><td class="cell-`cs&lt;">THB 1,232.47</td><td class="cell-ihbs">-THB 568.70</td><td class="cell-txp?">-31.5739707763%</td><td class="cell-HnPF">US$45.94</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="24197874-135b-809d-bbee-fdb0d61bcd43"><td class="cell-title"><a href="https://www.notion.so/Aeva-Technologies-Inc-24197874135b809dbbeefdb0d61bcd43?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/aeva--600.png"/>Aeva Technologies Inc</a></td><td class="cell-xmmM">AEVA</td><td class="cell-m\=a">3.1378638</td><td class="cell-I&lt;at">THB 625.43</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 393.73</td><td class="cell-GyjI">THB 1,962.51</td><td class="cell-`cs&lt;">THB 1,235.47</td><td class="cell-ihbs">-THB 727.04</td><td class="cell-txp?">-37.0465119997%</td><td class="cell-HnPF">US$19.54</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="24197874-135b-80e5-b179-c16bb74d2b78"><td class="cell-title"><a href="https://www.notion.so/BigBear-ai-Holdings-Inc-24197874135b80e5b179c16bb74d2b78?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/bigbear-ai--600.png"/>BigBear.ai Holdings Inc</a></td><td class="cell-xmmM">BBAI</td><td class="cell-m\=a">7.7014128</td><td class="cell-I&lt;at">THB 214.59</td><td class="cell-y\zi"><span class="selected-value select-value-color-orange">Technology</span></td><td class="cell-b?;c">THB 119.11</td><td class="cell-GyjI">THB 1,652.65</td><td class="cell-`cs&lt;">THB 917.32</td><td class="cell-ihbs">-THB 735.33</td><td class="cell-txp?">-44.494151638%</td><td class="cell-HnPF">US$6.71</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="2d197874-135b-80ed-9c18-f03e64a4f43e"><td class="cell-title"><a href="https://www.notion.so/NuScale-Power-2d197874135b80ed9c18f03e64a4f43e?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>NuScale Power</a></td><td class="cell-xmmM">SMR</td><td class="cell-m\=a">0.3676114</td><td class="cell-I&lt;at">THB 1,028.70</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 396.53</td><td class="cell-GyjI">THB 378.16</td><td class="cell-`cs&lt;">THB 145.77</td><td class="cell-ihbs">-THB 232.39</td><td class="cell-txp?">-61.4532905609%</td><td class="cell-HnPF">US$32.15</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="2d197874-135b-8003-8d6d-c9c6fbac037c"><td class="cell-title"><a href="https://www.notion.so/GoPro-2d197874135b80038d6dc9c6fbac037c?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>GoPro</a></td><td class="cell-xmmM">GPRO</td><td class="cell-m\=a">4.5082205</td><td class="cell-I&lt;at">THB 68.77</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 25.38</td><td class="cell-GyjI">THB 310.03</td><td class="cell-`cs&lt;">THB 114.42</td><td class="cell-ihbs">-THB 195.61</td><td class="cell-txp?">-63.0943725462%</td><td class="cell-HnPF">US$2.15</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="2d197874-135b-8050-8fd9-ebf0f45293de"><td class="cell-title"><a href="https://www.notion.so/Absci-Corp-2d197874135b80508fd9ebf0f45293de?pvs=21"><span class="icon">🇬🇼</span>Absci Corp</a></td><td class="cell-xmmM">ABIS</td><td class="cell-m\=a">15.017503</td><td class="cell-I&lt;at">THB 125.81</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 0.00</td><td class="cell-GyjI">THB 1,889.35</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">-THB 1,889.35</td><td class="cell-txp?">-100%</td><td class="cell-HnPF">US$3.93</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80a8-bad1-cdce63da260d"><td class="cell-title"><a href="https://www.notion.so/UNITEDHEALTH-GROUP-INCORPORATED-Delaware-23997874135b80a8bad1cdce63da260d?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSDVPzj-dGCk_WFK5xS7D27yWIE9g-0SeIY_A&amp;s"/>UNITEDHEALTH GROUP INCORPORATED (Delaware)</a></td><td class="cell-xmmM">UNH</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 18,262.34</td><td class="cell-y\zi"><span class="selected-value select-value-color-green">Healthcare</span></td><td class="cell-b?;c">THB 8,952.45</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$570.70</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-801b-a8bc-f0c7ddf55e54"><td class="cell-title"><a href="https://www.notion.so/Telomir-Pharmaceuticals-Inc-23997874135b801ba8bcf0c7ddf55e54?pvs=21"><img class="icon" src="https://ir.telomirpharma.com/pechoagl/2024/09/telomir_logo.png"/>Telomir Pharmaceuticals, Inc.</a></td><td class="cell-xmmM">TELO</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 170.46</td><td class="cell-y\zi"><span class="selected-value select-value-color-green">Healthcare</span></td><td class="cell-b?;c">THB 35.45</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$5.33</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80c3-bb7b-d79b01b3eecf"><td class="cell-title"><a href="https://www.notion.so/Exxon-Mobil-Corporation-23997874135b80c3bb7bd79b01b3eecf?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTcEvR3lcTQBxdaIUYqHq8Dax2IlBKtwgmTpg&amp;s"/>Exxon Mobil Corporation</a></td><td class="cell-xmmM">XOM</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 3,756.94</td><td class="cell-y\zi"><span class="selected-value select-value-color-yellow">Energy</span></td><td class="cell-b?;c">THB 4,648.21</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$117.40</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80b0-a29f-ce877604733e"><td class="cell-title"><a href="https://www.notion.so/Chevron-Corporation-23997874135b80b0a29fce877604733e?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRpm_KA0KKqxC3vWTICRNcV5bXOWKli4bUYDA&amp;s"/>Chevron Corporation</a></td><td class="cell-xmmM">CVX</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 4,954.04</td><td class="cell-y\zi"><span class="selected-value select-value-color-yellow">Energy</span></td><td class="cell-b?;c">THB 5,745.73</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$154.81</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80d3-8174-c3d31dcf24c6"><td class="cell-title"><a href="https://www.notion.so/Starbucks-Corp-23997874135b80d38174c3d31dcf24c6?pvs=21"><img class="icon" src="https://cdn-icons-png.flaticon.com/512/5977/5977591.png"/>Starbucks Corp</a></td><td class="cell-xmmM">SBUX</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 3,215.26</td><td class="cell-y\zi"><span class="selected-value select-value-color-gray">Consumer Discretionary</span></td><td class="cell-b?;c">THB 2,933.35</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$100.48</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80c0-a4dd-dff64079fed7"><td class="cell-title"><a href="https://www.notion.so/Johnson-Johnson-23997874135b80c0a4dddff64079fed7?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSwR-mYiIkkCIY28ur2ZykKmYqL3FoOsBAmhg&amp;s"/>Johnson &amp; Johnson</a></td><td class="cell-xmmM">JNJ</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 5,218.92</td><td class="cell-y\zi"><span class="selected-value select-value-color-green">Healthcare</span></td><td class="cell-b?;c">THB 7,663.04</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$163.09</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80dc-8545-fdbb42f6b5aa"><td class="cell-title"><a href="https://www.notion.so/Roblox-Corporation-23997874135b80dc8545fdbb42f6b5aa?pvs=21"><img class="icon" src="https://devforum-uploads.s3.dualstack.us-east-2.amazonaws.com/uploads/original/5X/b/e/7/7/be7772db5746822ddc33acbc3067b2435d4e1905.jpeg"/>Roblox Corporation</a></td><td class="cell-xmmM">RBLX</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 2,084.22</td><td class="cell-y\zi"><span class="selected-value select-value-color-pink">Communication Services</span></td><td class="cell-b?;c">THB 1,925.40</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$65.13</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80e8-8659-d9edb97cec53"><td class="cell-title"><a href="https://www.notion.so/Coca-Cola-Company-23997874135b80e88659d9edb97cec53?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQLm8NnlxhROxWZpV51BVCU2VUc_FXkvAcA5Q&amp;s"/>Coca-Cola Company</a></td><td class="cell-xmmM">KO</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 2,088.08</td><td class="cell-y\zi"><span class="selected-value select-value-color-purple">Consumer Staples</span></td><td class="cell-b?;c">THB 2,489.55</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$65.25</td><td class="cell-wZmW"><span class="selected-value select-value-color-orange">Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Dime-23997874135b806a8cfbf8405de346b6?pvs=21">Dime</a></td></tr><tr id="23997874-135b-80fc-9777-eb06595728a7"><td class="cell-title"><a href="https://www.notion.so/K-USXNDQ-A-D-23997874135b80fc9777eb06595728a7?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>K-USXNDQ — A(D)</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">764.1398</td><td class="cell-I&lt;at">THB 18.98</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 27.15</td><td class="cell-GyjI">THB 14,500.01</td><td class="cell-`cs&lt;">THB 20,747.69</td><td class="cell-ihbs">THB 6,247.68</td><td class="cell-txp?">43.0874386054%</td><td class="cell-HnPF">US$0.59</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8025-83a3-d28ca3eec77a"><td class="cell-title"><a href="https://www.notion.so/SCBS-P500-23997874135b802583a3d28ca3eec77a?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>SCBS&amp;P500</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">570.142</td><td class="cell-I&lt;at">THB 21.92</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 28.06</td><td class="cell-GyjI">THB 12,500.02</td><td class="cell-`cs&lt;">THB 15,999.21</td><td class="cell-ihbs">THB 3,499.19</td><td class="cell-txp?">27.9934684644%</td><td class="cell-HnPF">US$0.69</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8038-b55e-c46de1e32ffe"><td class="cell-title"><a href="https://www.notion.so/SCBNK225-23997874135b8038b55ec46de1e32ffe?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>SCBNK225</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">292.3675</td><td class="cell-I&lt;at">THB 30.78</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 38.41</td><td class="cell-GyjI">THB 9,000.01</td><td class="cell-`cs&lt;">THB 11,228.46</td><td class="cell-ihbs">THB 2,228.45</td><td class="cell-txp?">24.760583695%</td><td class="cell-HnPF">US$0.96</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-806d-8a72-e7f257f8b579"><td class="cell-title"><a href="https://www.notion.so/SCBNK225D-23997874135b806d8a72e7f257f8b579?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>SCBNK225D</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">251.0826</td><td class="cell-I&lt;at">THB 15.93</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 19.54</td><td class="cell-GyjI">THB 4,000.00</td><td class="cell-`cs&lt;">THB 4,905.28</td><td class="cell-ihbs">THB 905.28</td><td class="cell-txp?">22.6319753939%</td><td class="cell-HnPF">US$0.50</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8041-9411-e5d1fd3097a1"><td class="cell-title"><a href="https://www.notion.so/SCBRMNDQ-A-23997874135b80419411e5d1fd3097a1?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>SCBRMNDQ (A)</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">1311.954</td><td class="cell-I&lt;at">THB 12.20</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 14.67</td><td class="cell-GyjI">THB 15,999.94</td><td class="cell-`cs&lt;">THB 19,251.88</td><td class="cell-ihbs">THB 3,251.94</td><td class="cell-txp?">20.324709934%</td><td class="cell-HnPF">US$0.38</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-80a3-bb17-ec0eacc14070"><td class="cell-title"><a href="https://www.notion.so/SCBRMS-P500-23997874135b80a3bb17ec0eacc14070?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>SCBRMS&amp;P500</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">901.2345</td><td class="cell-I&lt;at">THB 17.75</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 20.58</td><td class="cell-GyjI">THB 15,999.98</td><td class="cell-`cs&lt;">THB 18,551.37</td><td class="cell-ihbs">THB 2,551.39</td><td class="cell-txp?">15.9462412834%</td><td class="cell-HnPF">US$0.55</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8046-bfe7-d5630a156e17"><td class="cell-title"><a href="https://www.notion.so/SCBTRAVEL-A-23997874135b8046bfe7d5630a156e17?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>SCBTRAVEL (A)</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">1395.6964</td><td class="cell-I&lt;at">THB 7.81</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 8.46</td><td class="cell-GyjI">THB 10,899.97</td><td class="cell-`cs&lt;">THB 11,813.31</td><td class="cell-ihbs">THB 913.34</td><td class="cell-txp?">8.3793231494%</td><td class="cell-HnPF">US$0.24</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-800e-b7c4-f224545639f2"><td class="cell-title"><a href="https://www.notion.so/K-CHANGE-SSF-23997874135b800eb7c4f224545639f2?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>K-CHANGE-SSF</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">143.8336</td><td class="cell-I&lt;at">THB 17.38</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 18.81</td><td class="cell-GyjI">THB 2,500.00</td><td class="cell-`cs&lt;">THB 2,705.51</td><td class="cell-ihbs">THB 205.51</td><td class="cell-txp?">8.2203760385%</td><td class="cell-HnPF">US$0.54</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8040-a03a-e2972d40e3fd"><td class="cell-title"><a href="https://www.notion.so/K-VIETNAM-23997874135b8040a03ae2972d40e3fd?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>K-VIETNAM</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">1415.27</td><td class="cell-I&lt;at">THB 12.71</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 13.74</td><td class="cell-GyjI">THB 17,988.08</td><td class="cell-`cs&lt;">THB 19,438.87</td><td class="cell-ihbs">THB 1,450.79</td><td class="cell-txp?">8.0653029111%</td><td class="cell-HnPF">US$0.40</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8020-bd2c-d5836e2aa07f"><td class="cell-title"><a href="https://www.notion.so/LHTPROP-23997874135b8020bd2cd5836e2aa07f?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>LHTPROP</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">1138.355</td><td class="cell-I&lt;at">THB 7.91</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 7.76</td><td class="cell-GyjI">THB 8,999.95</td><td class="cell-`cs&lt;">THB 8,839.10</td><td class="cell-ihbs">-THB 160.85</td><td class="cell-txp?">-1.7872275838%</td><td class="cell-HnPF">US$0.25</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8084-9c27-d340bfff6fc0"><td class="cell-title"><a href="https://www.notion.so/SCBSET50-23997874135b80849c27d340bfff6fc0?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>SCBSET50</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">1247.1022</td><td class="cell-I&lt;at">THB 18.84</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 18.43</td><td class="cell-GyjI">THB 23,500.02</td><td class="cell-`cs&lt;">THB 22,987.09</td><td class="cell-ihbs">-THB 512.93</td><td class="cell-txp?">-2.1826923587%</td><td class="cell-HnPF">US$0.59</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8055-b790-f9b8f8999c26"><td class="cell-title"><a href="https://www.notion.so/K-SET50-23997874135b8055b790f9b8f8999c26?pvs=21"><img class="icon notion-static-icon" src="https://www.notion.so/icons/activity_gray.svg"/>K-SET50</a></td><td class="cell-xmmM"></td><td class="cell-m\=a">394.6433</td><td class="cell-I&lt;at">THB 32.94</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 29.15</td><td class="cell-GyjI">THB 12,999.98</td><td class="cell-`cs&lt;">THB 11,504.84</td><td class="cell-ihbs">-THB 1,495.15</td><td class="cell-txp?">-11.5011338419%</td><td class="cell-HnPF">US$1.03</td><td class="cell-wZmW"><span class="selected-value select-value-color-purple">Mutual Fund</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Finnomena-23997874135b80c39330c79e7069d088?pvs=21">Finnomena</a></td></tr><tr id="23997874-135b-8063-80cd-d55045e3a4db"><td class="cell-title"><a href="https://www.notion.so/Airports-of-Thailand-23997874135b806380cdd55045e3a4db?pvs=21"><img class="icon" src="https://moneyandbanking.co.th/wp-content/uploads/2022/11/AOT-01-scaled.jpg"/>Airports of Thailand</a></td><td class="cell-xmmM">AOT</td><td class="cell-m\=a">100</td><td class="cell-I&lt;at">THB 43.82</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 53.50</td><td class="cell-GyjI">THB 4,382.00</td><td class="cell-`cs&lt;">THB 5,350.00</td><td class="cell-ihbs">THB 968.00</td><td class="cell-txp?">22.0903696942%</td><td class="cell-HnPF">US$1.37</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-80fe-8817-dc0111d7ac5f"><td class="cell-title"><a href="https://www.notion.so/Baidu-DR-23997874135b80fe8817dc0111d7ac5f?pvs=21"><img class="icon" src="https://cdn-icons-png.flaticon.com/512/2504/2504887.png"/>Baidu DR</a></td><td class="cell-xmmM">BIDU80</td><td class="cell-m\=a">600</td><td class="cell-I&lt;at">THB 3.99</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 4.84</td><td class="cell-GyjI">THB 2,394.00</td><td class="cell-`cs&lt;">THB 2,904.00</td><td class="cell-ihbs">THB 510.00</td><td class="cell-txp?">21.3032581454%</td><td class="cell-HnPF">US$0.12</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-809f-8ec0-d62a29cbe9e2"><td class="cell-title"><a href="https://www.notion.so/Supalai-23997874135b809f8ec0d62a29cbe9e2?pvs=21"><img class="icon" src="https://cpanel.co.th/wp-content/uploads/2022/07/Supalai-Logo.jpg"/>Supalai</a></td><td class="cell-xmmM">SPALI</td><td class="cell-m\=a">100</td><td class="cell-I&lt;at">THB 14.22</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 17.20</td><td class="cell-GyjI">THB 1,422.00</td><td class="cell-`cs&lt;">THB 1,720.00</td><td class="cell-ihbs">THB 298.00</td><td class="cell-txp?">20.9563994374%</td><td class="cell-HnPF">US$0.44</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-805f-8dbf-e34409a186e4"><td class="cell-title"><a href="https://www.notion.so/Thai-Oil-23997874135b805f8dbfe34409a186e4?pvs=21"><span class="icon">🔝</span>Thai Oil</a></td><td class="cell-xmmM">TOP</td><td class="cell-m\=a">100</td><td class="cell-I&lt;at">THB 29.80</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 35.25</td><td class="cell-GyjI">THB 2,980.00</td><td class="cell-`cs&lt;">THB 3,525.00</td><td class="cell-ihbs">THB 545.00</td><td class="cell-txp?">18.288590604%</td><td class="cell-HnPF">US$0.93</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8001-bc84-c9d89efa888c"><td class="cell-title"><a href="https://www.notion.so/Xiaomi-DR-23997874135b8001bc84c9d89efa888c?pvs=21"><img class="icon" src="https://www.citypng.com/public/uploads/preview/round-circle-mi-xiaomi-icon-logo-701751695132551sf8a2iincn.png"/>Xiaomi DR</a></td><td class="cell-xmmM">XIAOMI80</td><td class="cell-m\=a">500</td><td class="cell-I&lt;at">THB 13.85</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 16.00</td><td class="cell-GyjI">THB 6,925.00</td><td class="cell-`cs&lt;">THB 8,000.00</td><td class="cell-ihbs">THB 1,075.00</td><td class="cell-txp?">15.523465704%</td><td class="cell-HnPF">US$0.43</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8001-9d2f-da2a912bca44"><td class="cell-title"><a href="https://www.notion.so/Prima-Marine-23997874135b80019d2fda2a912bca44?pvs=21"><img class="icon" src="https://s3-symbol-logo.tradingview.com/prima-marine-public-company-limited--600.png"/>Prima Marine</a></td><td class="cell-xmmM">PRM</td><td class="cell-m\=a">300</td><td class="cell-I&lt;at">THB 5.61</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 6.40</td><td class="cell-GyjI">THB 1,683.00</td><td class="cell-`cs&lt;">THB 1,920.00</td><td class="cell-ihbs">THB 237.00</td><td class="cell-txp?">14.0819964349%</td><td class="cell-HnPF">US$0.18</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8033-ba62-e203a6c9dfd3"><td class="cell-title"><a href="https://www.notion.so/Tencent-DR-23997874135b8033ba62e203a6c9dfd3?pvs=21"><img class="icon" src="https://www.tencent.net.cn/wp-content/uploads/2024/05/white-logo-sc.png"/>Tencent DR</a></td><td class="cell-xmmM">TENCENT80</td><td class="cell-m\=a">100</td><td class="cell-I&lt;at">THB 22.14</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 24.60</td><td class="cell-GyjI">THB 2,214.00</td><td class="cell-`cs&lt;">THB 2,460.00</td><td class="cell-ihbs">THB 246.00</td><td class="cell-txp?">11.1111111111%</td><td class="cell-HnPF">US$0.69</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-80bd-844d-ce3247962860"><td class="cell-title"><a href="https://www.notion.so/Alibaba-DR-23997874135b80bd844dce3247962860?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScwjxQqIaGcLzxb_phdfc8ggTb2dba7Al3lA&amp;s"/>Alibaba DR</a></td><td class="cell-xmmM">BABA80</td><td class="cell-m\=a">1000</td><td class="cell-I&lt;at">THB 6.12</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 5.90</td><td class="cell-GyjI">THB 6,120.00</td><td class="cell-`cs&lt;">THB 5,900.00</td><td class="cell-ihbs">-THB 220.00</td><td class="cell-txp?">-3.5947712418%</td><td class="cell-HnPF">US$0.19</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-80e2-b966-ea00753fd0bf"><td class="cell-title"><a href="https://www.notion.so/PTT-23997874135b80e2b966ea00753fd0bf?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTMThq-gY-EZkQ-raLZdOc8VZIwwhQDxipuNQ&amp;s"/>PTT</a></td><td class="cell-xmmM">PTT</td><td class="cell-m\=a">100</td><td class="cell-I&lt;at">THB 34.56</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 31.75</td><td class="cell-GyjI">THB 3,456.00</td><td class="cell-`cs&lt;">THB 3,175.00</td><td class="cell-ihbs">-THB 281.00</td><td class="cell-txp?">-8.130787037%</td><td class="cell-HnPF">US$1.08</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-805e-8630-df21fcb0ca33"><td class="cell-title"><a href="https://www.notion.so/Bangkok-Dusit-Medical-23997874135b805e8630df21fcb0ca33?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ4SuyaAsn7EH0tbAU6hKwjerTGQr8btNPnNw&amp;s"/>Bangkok Dusit Medical</a></td><td class="cell-xmmM">BDMS</td><td class="cell-m\=a">200</td><td class="cell-I&lt;at">THB 22.09</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 19.50</td><td class="cell-GyjI">THB 4,418.00</td><td class="cell-`cs&lt;">THB 3,900.00</td><td class="cell-ihbs">-THB 518.00</td><td class="cell-txp?">-11.7247623359%</td><td class="cell-HnPF">US$0.69</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8093-9994-fa16d0afb8ff"><td class="cell-title"><a href="https://www.notion.so/THAIBEV-23997874135b80939994fa16d0afb8ff?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQhtLxZYs57skypHSI4AGeiL7aw0xrb7a5lXw&amp;s"/>THAIBEV</a></td><td class="cell-xmmM">THAIBEV19</td><td class="cell-m\=a">100</td><td class="cell-I&lt;at">THB 13.62</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 11.30</td><td class="cell-GyjI">THB 1,362.00</td><td class="cell-`cs&lt;">THB 1,130.00</td><td class="cell-ihbs">-THB 232.00</td><td class="cell-txp?">-17.033773862%</td><td class="cell-HnPF">US$0.43</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8004-ad65-eb13b58c20d5"><td class="cell-title"><a href="https://www.notion.so/Pinthong-Industrial-Park-PCL-23997874135b8004ad65eb13b58c20d5?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRAqfEs1wEcEC0edHwQXnRj3sB9-FHbCpSa_b93eH4&amp;usqp=CAE&amp;s"/>Pinthong Industrial Park PCL</a></td><td class="cell-xmmM">PIN</td><td class="cell-m\=a">200</td><td class="cell-I&lt;at">THB 5.31</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 4.28</td><td class="cell-GyjI">THB 1,062.00</td><td class="cell-`cs&lt;">THB 856.00</td><td class="cell-ihbs">-THB 206.00</td><td class="cell-txp?">-19.3973634652%</td><td class="cell-HnPF">US$0.17</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8010-8f1a-d83c5eb4da98"><td class="cell-title"><a href="https://www.notion.so/HomePro-23997874135b80108f1ad83c5eb4da98?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSHIfphdBG6APzEsnY5gwUkx0xjAIew3kaD7Q&amp;s"/>HomePro</a></td><td class="cell-xmmM">HMPRO</td><td class="cell-m\=a">100</td><td class="cell-I&lt;at">THB 8.66</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 6.45</td><td class="cell-GyjI">THB 866.00</td><td class="cell-`cs&lt;">THB 645.00</td><td class="cell-ihbs">-THB 221.00</td><td class="cell-txp?">-25.519630485%</td><td class="cell-HnPF">US$0.27</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8042-9ac7-d59ba709ae9b"><td class="cell-title"><a href="https://www.notion.so/Winner-Group-Enterprise-PCL-23997874135b80429ac7d59ba709ae9b?pvs=21"><img class="icon" src="https://media.licdn.com/dms/image/v2/C560BAQEs02NnrbJjyg/company-logo_200_200/company-logo_200_200/0/1630639002367/winner_group_enterprise_pcl_winner__logo?e=2147483647&amp;v=beta&amp;t=KKZGd1KPHVD2a60ZoJx2LmKhT5-wc__ntXEmzp80V3U"/>Winner Group Enterprise PCL</a></td><td class="cell-xmmM">WINNER</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 2.02</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 2.04</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$0.06</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8013-b3c6-eca1638b45fe"><td class="cell-title"><a href="https://www.notion.so/DOHOME-23997874135b8013b3c6eca1638b45fe?pvs=21"><img class="icon" src="https://yt3.googleusercontent.com/ytc/AIdro_kRbM-gCZDxu-_1QIY8A6dSgwSa3e1Std7vFkUGdUe9POc=s900-c-k-c0x00ffffff-no-rj"/>DOHOME</a></td><td class="cell-xmmM">DOHOME</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 5.61</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 3.82</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$0.18</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-8018-8ae9-e889e0d0427a"><td class="cell-title"><a href="https://www.notion.so/Buriram-Sugar-PCL-23997874135b80188ae9e889e0d0427a?pvs=21"><img class="icon" src="https://image.pitchbook.com/fGdjr6nxt4yYxbQ17rLfrDAXhYt1567085123426_200x200"/>Buriram Sugar PCL</a></td><td class="cell-xmmM">BRR</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 4.47</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 4.20</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$0.14</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr><tr id="23997874-135b-80c6-9b99-e3e0a3074ef0"><td class="cell-title"><a href="https://www.notion.so/BYD-Electronic-DR-23997874135b80c69b99e3e0a3074ef0?pvs=21"><img class="icon" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRAYMT5NgPC5eteNP4tDw3tv2e1eSOYx6gruQ&amp;s"/>BYD Electronic DR</a></td><td class="cell-xmmM">BYDCOM80</td><td class="cell-m\=a">0</td><td class="cell-I&lt;at">THB 0.88</td><td class="cell-y\zi"></td><td class="cell-b?;c">THB 0.56</td><td class="cell-GyjI">THB 0.00</td><td class="cell-`cs&lt;">THB 0.00</td><td class="cell-ihbs">THB 0.00</td><td class="cell-txp?"></td><td class="cell-HnPF">US$0.03</td><td class="cell-wZmW"><span class="selected-value select-value-color-gray">TH Stock</span></td><td class="cell-ZkUz"><a href="https://www.notion.so/Streaming-23997874135b803a893ae4448f9de8cb?pvs=21">Streaming</a></td></tr></tbody></table><br/><br/></div></article><span class="sans" style="font-size:14px;padding-top:2em"></span></body></html>

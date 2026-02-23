@@ -22,7 +22,7 @@ DocRAG is fully containerized. To get started, ensure you have **Docker** and **
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/your-username/DocRAG.git
+   git clone https://github.com/tharitthaveekittikul/DocRAG
    cd DocRAG
    ```
 

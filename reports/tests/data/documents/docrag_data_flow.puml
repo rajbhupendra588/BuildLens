@@ -1,0 +1,132 @@
+@startuml DocRAG_DataFlow
+
+title DocRAG — Full Data & User Flow
+
+skinparam backgroundColor #FAFAFA
+skinparam sequence {
+    ArrowColor #2C7BE5
+    ActorBorderColor #2C7BE5
+    LifeLineBorderColor #AAAAAA
+    ParticipantBackgroundColor #EBF3FF
+    ParticipantBorderColor #2C7BE5
+    NoteBackgroundColor #FFF9E6
+    NoteBorderColor #E6C000
+}
+
+actor "User" as User
+participant "Next.js\nFrontend\n:3000" as FE
+participant "FastAPI\nBackend\n:8000" as BE
+participant "FileService" as FS
+participant "ChunkingService" as CS
+participant "VectorService /\nRetrievalService" as VS
+participant "Qdrant\nVector DB\n:6333" as QD
+participant "LLMService\n(Ollama/OpenAI)" as LLM
+participant "ChatHistory\nService" as CHS
+database "PostgreSQL\n:5432" as PG
+
+== 📥 Document Ingestion Flow ==
+
+User -> FE : Upload document\n(PDF, DOCX, MD, CSV, etc.)
+FE -> BE : POST /api/v1/ingest/upload\nmultipart/form-data
+BE -> FS : validate_file()\n(size ≤ 20MB, ext allowed)
+FS --> BE : validated ✅
+
+BE -> FS : process_file()
+alt PDF / DOCX / PPTX / Image
+    FS -> FS : Docling DocumentConverter\n→ DoclingDocument (Markdown)
+else CSV
+    FS -> CS : process_csv_to_sentences()\n→ plain text
+else TXT / MD / JSON / PUML
+    FS -> FS : decode bytes → string
+end
+
+BE -> CS : split_content(text, filename, doc_id)
+note right
+    HybridChunker (max 512 tokens)
+    Falls back to simple char split
+end note
+CS --> BE : List[Chunk] with metadata
+
+BE -> VS : upsert_chunks(chunks)
+VS -> VS : Embed via\nall-MiniLM-L6-v2\n(384-dim vectors)
+VS -> QD : Upsert vectors +\npayload (content, metadata)
+QD --> VS : OK
+
+BE --> FE : { document_id, total_chunks, status: "success" }
+FE --> User : ✅ Document indexed
+
+== 💬 Chat Session Flow ==
+
+User -> FE : Start new chat
+FE -> BE : POST /api/v1/chat/sessions
+BE -> CHS : create_session(db)
+CHS -> PG : INSERT ChatSession\n(title: "New Conversation")
+PG --> CHS : session record
+CHS --> BE : { id, title, created_at }
+BE --> FE : session_id (UUID)
+
+== ❓ Streaming Q&A Flow ==
+
+User -> FE : Type question + Send
+FE -> BE : GET /api/v1/chat/ask-stream\n?question=...&session_id=...
+BE -> CHS : add_message(db, session_id, "user", question)
+CHS -> PG : INSERT ChatMessage (role=user)
+
+BE -> CHS : get_history(db, session_id, limit=10)
+CHS -> PG : SELECT last 10 messages
+PG --> CHS : history[]
+
+note over BE : If first message:\nBackground task triggers\ngenerate_title() via LLM
+
+BE -> VS : retrieval_service.search(question, limit=5, min_score=0.3)
+VS -> VS : Embed question → query_vector
+VS -> QD : query_points(query_vector, limit=5)
+QD --> VS : Top-5 matching chunks + scores
+
+alt No relevant context found
+    BE --> FE : "Sorry, I couldn't find any relevant information."
+else Context found
+    BE -> LLM : generate_answer_stream(\n  question, context_chunks, history)
+    note right LLM
+        System prompt includes:
+        - Conversation history
+        - Retrieved context snippets
+        - "If not in context, say you don't know"
+    end note
+    LLM --> BE : SSE stream\n{"type":"content","text":"..."}\n{"type":"done"}
+    BE --> FE : StreamingResponse\n(text/event-stream)
+    FE --> User : Render tokens in real-time ⚡
+
+    BE -> CHS : add_message(db, session_id, "assistant", full_response)
+    CHS -> PG : INSERT ChatMessage (role=assistant)
+end
+
+== 📂 Document Management Flow ==
+
+User -> FE : View indexed documents
+FE -> BE : GET /api/v1/documents/
+BE -> VS : list_indexed_documents()
+VS -> QD : scroll(collection, limit=10000)
+QD --> VS : All points with payload
+VS --> BE : [{ document_id, file_name }]
+BE --> FE : { documents: [...] }
+FE --> User : Display document list
+
+User -> FE : Delete a document
+FE -> BE : DELETE /api/v1/documents/{document_id}
+BE -> VS : delete_document_by_id(document_id)
+VS -> QD : delete(filter: metadata.document_id == id)
+QD --> VS : Deleted ✅
+BE --> FE : { message: "Document removed" }
+FE --> User : ✅ Document removed
+
+== 🔍 Direct Semantic Search ==
+
+User -> FE : Search query
+FE -> BE : GET /api/v1/query/search?q=...
+BE -> VS : retrieval_service.search(q)
+VS -> QD : query_points(embed(q), limit=5)
+QD --> VS : Results
+BE --> FE : { query, count, results }
+
+@enduml

@@ -1,0 +1,148 @@
+====================================================================
+  DocRAG — System Overview Report
+  Generated: 2026-02-23
+====================================================================
+
+PROJECT SUMMARY
+---------------
+DocRAG is a multimodal, self-hosted Retrieval-Augmented Generation
+(RAG) system. It allows users to upload documents and images, which
+are indexed into a vector database, and then chat with an LLM that
+answers questions grounded in those documents.
+
+TECH STACK
+----------
+  Frontend  : Next.js 15+ (App Router), TypeScript, TailwindCSS
+  Backend   : FastAPI (Python 3.14), uvicorn, uv package manager
+  Vector DB : Qdrant v1.17.0 (HTTP :6333, gRPC :6334)
+  SQL DB    : PostgreSQL 16 (chat history, :5432)
+  Embedding : sentence-transformers/all-MiniLM-L6-v2 (384-dim)
+  LLM       : Ollama (local) / OpenAI / Anthropic / Gemini (cloud)
+  Parsing   : Docling (PDF, DOCX, PPTX, Images → Markdown)
+  Chunking  : HybridChunker (max 512 tokens, merge_peers=True)
+  Container : Docker Compose (4 services)
+
+SERVICE PORTS
+-------------
+  Frontend  : http://localhost:3000
+  Backend   : http://localhost:8000
+  Qdrant    : http://localhost:6333
+  PostgreSQL: localhost:5432
+
+====================================================================
+API ENDPOINTS
+====================================================================
+
+[GET]    /health
+  → Returns system health status, Qdrant connectivity, LLM config
+
+[POST]   /api/v1/ingest/upload
+  → Upload a document file (form-data: file)
+  → Validates, parses, chunks, embeds, and stores in Qdrant
+  → Returns document_id, total_chunks, status
+
+[GET]    /api/v1/query/search?q={query}
+  → Semantic vector search over Qdrant collection
+  → Returns top-5 chunks by default (min_score: 0.3)
+
+[POST]   /api/v1/chat/ask?question={q}
+  → One-shot Q&A (no session, no history, non-streaming)
+  → Returns answer + list of source file names
+
+[GET]    /api/v1/chat/ask-stream?question={q}&session_id={uuid}
+  → Streaming Q&A with session history (Server-Sent Events)
+  → Saves user/assistant messages to PostgreSQL
+  → Auto-renames session title on first message
+
+[POST]   /api/v1/chat/sessions
+  → Create a new chat session
+  → Default title: "New Conversation"
+
+[GET]    /api/v1/chat/sessions
+  → List all sessions, ordered newest first
+
+[PATCH]  /api/v1/chat/sessions/{session_id}?title={title}
+  → Rename a session
+
+[DELETE] /api/v1/chat/sessions/{session_id}
+  → Delete session and all its messages
+
+[GET]    /api/v1/chat/history/{session_id}
+  → Retrieve all messages for a given session
+
+[GET]    /api/v1/documents/
+  → List all unique documents indexed in Qdrant
+
+[DELETE] /api/v1/documents/{document_id}
+  → Remove all vector chunks for a given document
+
+====================================================================
+DATA FLOWS
+====================================================================
+
+1. DOCUMENT INGESTION FLOW
+   User → Upload file → FileService validates (max 20MB, allowed ext)
+   → Docling converts PDF/DOCX/Images to Markdown
+   → CSV rows → natural language sentences
+   → TXT/MD/JSON/PUML → read as-is
+   → ChunkingService splits text (HybridChunker, 512 tokens)
+   → Each chunk gets UUID, file_name, doc_id, char_count, token_count
+   → VectorService embeds chunks → upserts to Qdrant
+   → Response: document_id + total_chunks
+
+2. STREAMING CHAT FLOW
+   User sends question + session_id
+   → ChatHistoryService saves user message to PostgreSQL
+   → Fetch last 10 messages as context history
+   → RetrievalService embeds question, searches Qdrant (top-5, score≥0.3)
+   → LLMService builds system prompt (history + retrieved context)
+   → Streams SSE response tokens to frontend
+   → Background: saves full assistant response to PostgreSQL
+   → Background: on first message, generates session title via LLM
+
+3. DOCUMENT MANAGEMENT FLOW
+   View: Scroll all Qdrant points → deduplicate by document_id → list
+   Delete: Filter Qdrant by metadata.document_id → delete all chunks
+
+====================================================================
+SUPPORTED FILE TYPES
+====================================================================
+  .pdf   → Docling DocumentConverter → Markdown
+  .docx  → Docling DocumentConverter → Markdown
+  .pptx  → Docling DocumentConverter → Markdown
+  .png   → Docling DocumentConverter → Markdown
+  .jpg   → Docling DocumentConverter → Markdown
+  .jpeg  → Docling DocumentConverter → Markdown
+  .puml  → Read as plain text (UTF-8)
+  .txt   → Read as plain text (UTF-8)
+  .md    → Read as plain text (UTF-8)
+  .json  → Read as plain text (UTF-8)
+  .csv   → Rows converted to natural language sentences
+  .xlsx  → Read as bytes (UTF-8 fallback)
+
+====================================================================
+CONFIGURATION (Environment Variables)
+====================================================================
+  APP_NAME                 = DocRAG
+  ENVIRONMENT              = development | production | test
+  EMBED_MODEL              = sentence-transformers/all-MiniLM-L6-v2
+
+  QDRANT__HOST             = qdrant
+  QDRANT__PORT             = 6333
+  QDRANT__COLLECTION_NAME  = doc_rag_knowledge
+
+  LLM__PROVIDER            = ollama | openai | anthropic | gemini
+  LLM__OLLAMA_BASE_URL     = http://localhost:11434
+  LLM__OPENAI_API_KEY      = (optional)
+  LLM__ANTHROPIC_API_KEY   = (optional)
+  LLM__GEMINI_API_KEY      = (optional)
+
+  DB__USER                 = postgres
+  DB__PASSWORD             = password
+  DB__HOST                 = localhost
+  DB__PORT                 = 5432
+  DB__NAME                 = docrag_db
+
+====================================================================
+END OF REPORT
+====================================================================

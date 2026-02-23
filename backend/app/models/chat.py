@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import List, Optional
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import Column, ForeignKey
+import sqlalchemy.dialects.postgresql as pg
 import uuid
 
 class ChatSession(SQLModel, table=True):
@@ -9,11 +11,16 @@ class ChatSession(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    messages: List["ChatMessage"] = Relationship(back_populates="session")
+    messages: List["ChatMessage"] = Relationship(
+        back_populates="session",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 class ChatMessage(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    session_id: uuid.UUID = Field(foreign_key="chatsession.id")
+    session_id: uuid.UUID = Field(
+        sa_column=Column(pg.UUID(as_uuid=True), ForeignKey("chatsession.id", ondelete="CASCADE"), nullable=False)
+    )
     role: str = Field(index=True) # user, assistant, system
     content: str
     created_at: datetime = Field(default_factory=datetime.utcnow)

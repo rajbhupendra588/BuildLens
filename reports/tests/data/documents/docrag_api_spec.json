@@ -1,0 +1,326 @@
+{
+  "report": {
+    "project": "DocRAG",
+    "description": "Multimodal Self-Hosted Retrieval-Augmented Generation System",
+    "version": "0.1.0",
+    "generated_at": "2026-02-23T23:32:33+07:00",
+    "repository": "https://github.com/your-username/DocRAG"
+  },
+  "system": {
+    "architecture": "Containerized monorepo (Docker Compose)",
+    "services": [
+      {
+        "name": "frontend",
+        "technology": "Next.js 15+",
+        "language": "TypeScript",
+        "port": 3000,
+        "container": "docrag-ui",
+        "description": "App Router UI for document management and chat"
+      },
+      {
+        "name": "backend",
+        "technology": "FastAPI",
+        "language": "Python 3.14",
+        "port": 8000,
+        "container": "docrag-api",
+        "description": "REST API for ingestion, retrieval, chat orchestration"
+      },
+      {
+        "name": "qdrant",
+        "technology": "Qdrant v1.17.0",
+        "port_http": 6333,
+        "port_grpc": 6334,
+        "container": "docrag-vector-db",
+        "collection": "doc_rag_knowledge",
+        "description": "High-fidelity vector storage for semantic search"
+      },
+      {
+        "name": "postgres",
+        "technology": "PostgreSQL 16",
+        "port": 5432,
+        "container": "docrag-postgres",
+        "database": "docrag_db",
+        "description": "Relational storage for chat sessions and messages"
+      }
+    ],
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "vector_dimensions": 384,
+    "llm_providers": ["ollama", "openai", "anthropic", "gemini"],
+    "default_llm_provider": "ollama",
+    "document_parser": "Docling"
+  },
+  "api_endpoints": [
+    {
+      "id": "health_check",
+      "method": "GET",
+      "path": "/health",
+      "tag": "Health",
+      "description": "Returns application health status including Qdrant and LLM info",
+      "auth_required": false,
+      "response_fields": [
+        "status",
+        "app_name",
+        "app_version",
+        "python_version",
+        "environment",
+        "qdrant",
+        "llm"
+      ]
+    },
+    {
+      "id": "ingest_upload",
+      "method": "POST",
+      "path": "/api/v1/ingest/upload",
+      "tag": "Ingestion",
+      "description": "Upload a document for processing and indexing into Qdrant vector DB",
+      "auth_required": false,
+      "request_type": "multipart/form-data",
+      "request_fields": [
+        { "name": "file", "type": "UploadFile", "required": true }
+      ],
+      "max_file_size_mb": 20,
+      "supported_extensions": [
+        ".pdf",
+        ".docx",
+        ".pptx",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".puml",
+        ".txt",
+        ".md",
+        ".json",
+        ".csv",
+        ".xlsx"
+      ],
+      "response_fields": [
+        "document_id",
+        "file_name",
+        "total_chunks",
+        "chunks_preview",
+        "status",
+        "message"
+      ],
+      "pipeline": [
+        "FileService.validate_file",
+        "FileService.process_file",
+        "ChunkingService.split_content",
+        "VectorService.upsert_chunks"
+      ]
+    },
+    {
+      "id": "query_search",
+      "method": "GET",
+      "path": "/api/v1/query/search",
+      "tag": "Retrieval",
+      "description": "Perform semantic vector search over indexed documents",
+      "auth_required": false,
+      "query_params": [
+        {
+          "name": "q",
+          "type": "string",
+          "required": true,
+          "description": "Search query text"
+        }
+      ],
+      "default_limit": 5,
+      "min_score": 0.3,
+      "response_fields": ["query", "count", "results"]
+    },
+    {
+      "id": "chat_ask",
+      "method": "POST",
+      "path": "/api/v1/chat/ask",
+      "tag": "Chat",
+      "description": "One-shot Q&A without streaming or session context",
+      "auth_required": false,
+      "query_params": [
+        { "name": "question", "type": "string", "required": true }
+      ],
+      "response_fields": ["answer", "sources"]
+    },
+    {
+      "id": "chat_ask_stream",
+      "method": "GET",
+      "path": "/api/v1/chat/ask-stream",
+      "tag": "Chat",
+      "description": "Streaming Q&A with session history via Server-Sent Events",
+      "auth_required": false,
+      "query_params": [
+        { "name": "question", "type": "string", "required": true },
+        { "name": "session_id", "type": "UUID", "required": true }
+      ],
+      "response_type": "text/event-stream",
+      "sse_event_types": ["content", "done", "error"],
+      "features": ["chat_history", "context_retrieval", "auto_title_generation"]
+    },
+    {
+      "id": "chat_create_session",
+      "method": "POST",
+      "path": "/api/v1/chat/sessions",
+      "tag": "Chat",
+      "description": "Create a new chat session",
+      "auth_required": false,
+      "response_fields": ["id", "title", "created_at"]
+    },
+    {
+      "id": "chat_list_sessions",
+      "method": "GET",
+      "path": "/api/v1/chat/sessions",
+      "tag": "Chat",
+      "description": "List all chat sessions, ordered by creation date descending",
+      "auth_required": false,
+      "response_fields": ["id", "title", "created_at", "updated_at"]
+    },
+    {
+      "id": "chat_rename_session",
+      "method": "PATCH",
+      "path": "/api/v1/chat/sessions/{session_id}",
+      "tag": "Chat",
+      "description": "Rename a chat session",
+      "auth_required": false,
+      "path_params": [{ "name": "session_id", "type": "UUID" }],
+      "query_params": [{ "name": "title", "type": "string", "required": true }],
+      "error_codes": [404]
+    },
+    {
+      "id": "chat_delete_session",
+      "method": "DELETE",
+      "path": "/api/v1/chat/sessions/{session_id}",
+      "tag": "Chat",
+      "description": "Delete a chat session and all associated messages",
+      "auth_required": false,
+      "path_params": [{ "name": "session_id", "type": "UUID" }],
+      "response_fields": ["message"],
+      "error_codes": [404]
+    },
+    {
+      "id": "chat_get_history",
+      "method": "GET",
+      "path": "/api/v1/chat/history/{session_id}",
+      "tag": "Chat",
+      "description": "Retrieve the full message history for a chat session",
+      "auth_required": false,
+      "path_params": [{ "name": "session_id", "type": "UUID" }],
+      "error_codes": [404]
+    },
+    {
+      "id": "documents_list",
+      "method": "GET",
+      "path": "/api/v1/documents/",
+      "tag": "Documents",
+      "description": "List all unique documents indexed in the vector database",
+      "auth_required": false,
+      "response_fields": ["documents"],
+      "document_fields": ["document_id", "file_name"]
+    },
+    {
+      "id": "documents_delete",
+      "method": "DELETE",
+      "path": "/api/v1/documents/{document_id}",
+      "tag": "Documents",
+      "description": "Delete all vector chunks associated with a document",
+      "auth_required": false,
+      "path_params": [{ "name": "document_id", "type": "string" }],
+      "response_fields": ["message"],
+      "error_codes": [500]
+    }
+  ],
+  "data_models": {
+    "ChatSession": {
+      "table": "chatsession",
+      "fields": {
+        "id": { "type": "UUID", "primary_key": true, "default": "uuid4" },
+        "title": { "type": "string", "default": "New Conversation" },
+        "created_at": { "type": "datetime", "default": "utcnow" },
+        "updated_at": { "type": "datetime", "default": "utcnow" }
+      }
+    },
+    "ChatMessage": {
+      "table": "chatmessage",
+      "fields": {
+        "id": { "type": "UUID", "primary_key": true, "default": "uuid4" },
+        "session_id": { "type": "UUID", "foreign_key": "chatsession.id" },
+        "role": {
+          "type": "string",
+          "enum": ["user", "assistant", "system"],
+          "indexed": true
+        },
+        "content": { "type": "string" },
+        "created_at": { "type": "datetime", "default": "utcnow" }
+      }
+    },
+    "VectorChunk": {
+      "storage": "Qdrant",
+      "fields": {
+        "id": { "type": "UUID" },
+        "content": {
+          "type": "string",
+          "description": "Text content of the chunk"
+        },
+        "metadata.document_id": {
+          "type": "string",
+          "description": "Parent document UUID"
+        },
+        "metadata.file_name": {
+          "type": "string",
+          "description": "Original file name"
+        },
+        "metadata.chunk_index": {
+          "type": "integer",
+          "description": "Position in document"
+        },
+        "metadata.char_count": {
+          "type": "integer",
+          "description": "Character count"
+        },
+        "metadata.token_count": {
+          "type": "integer",
+          "description": "Token count (MiniLM)"
+        }
+      }
+    }
+  },
+  "user_flows": [
+    {
+      "name": "Document Ingestion",
+      "steps": [
+        "User navigates to upload section in frontend",
+        "User selects a file (PDF, DOCX, TXT, MD, CSV, JSON, PUML, etc.)",
+        "Frontend sends POST /api/v1/ingest/upload with multipart form",
+        "Backend validates file size (≤20MB) and extension",
+        "FileService processes: Docling for rich docs, raw read for text files",
+        "ChunkingService splits content into ≤512 token chunks",
+        "VectorService embeds each chunk using all-MiniLM-L6-v2",
+        "Chunks upserted to Qdrant collection 'doc_rag_knowledge'",
+        "Frontend displays success with document_id and total_chunks"
+      ]
+    },
+    {
+      "name": "Chat with Documents",
+      "steps": [
+        "User creates a new chat session (POST /api/v1/chat/sessions)",
+        "User types a question in the chat interface",
+        "Frontend sends GET /api/v1/chat/ask-stream with question + session_id",
+        "Backend saves user message to PostgreSQL",
+        "Backend retrieves last 10 messages as conversation history",
+        "RetrievalService embeds question, queries Qdrant for top-5 chunks",
+        "LLMService builds prompt with history + retrieved context",
+        "LLMService streams response via Ollama/OpenAI/Anthropic/Gemini",
+        "Frontend renders streamed tokens in real-time",
+        "Backend saves full AI response to PostgreSQL",
+        "Session title auto-generated on first message"
+      ]
+    },
+    {
+      "name": "Document Management",
+      "steps": [
+        "User views indexed documents list (GET /api/v1/documents/)",
+        "Backend scrolls all Qdrant points, deduplicates by document_id",
+        "Frontend displays document list with names and IDs",
+        "User can delete a document (DELETE /api/v1/documents/{id})",
+        "Backend removes all Qdrant chunks matching document_id filter"
+      ]
+    }
+  ]
+}
