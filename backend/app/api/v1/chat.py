@@ -40,6 +40,17 @@ async def list_sessions(db: Session = Depends(get_session)):
     sessions = db.exec(statement).all()
     return sessions
 
+@router.get("/history/{session_id}")
+async def get_chat_history(
+    session_id: uuid.UUID,
+    db: Session = Depends(get_session)
+):
+    session = db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    message = chat_history_service.get_session_message(db, session_id)
+    return message
 
 @router.get("/ask-stream")
 async def ask_question_stream(
@@ -81,11 +92,14 @@ async def ask_question_stream(
                 continue
         
         if full_ai_response:
-            print(f"DEBUG: Saving assistant response: {full_ai_response[:50]}...")
-            chat_history_service.add_message(db, session_id, "assistant", full_ai_response)
+            try:
+                print(f"DEBUG: Saving assistant response: {full_ai_response[:50]}...")
+                chat_history_service.add_message(db, session_id, "assistant", full_ai_response)
+            except Exception as e:
+                print(f"Error saving assistant response: {e}")
         else:
             print("DEBUG: Warning - full_ai_response is empty!")
-            
+
     return StreamingResponse(
         generate_with_history_tracking(),
         media_type="text/event-stream"

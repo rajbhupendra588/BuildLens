@@ -21,5 +21,14 @@ class ChatHistoryService:
         messages = db.exec(statement).all()
         return sorted(messages, key=lambda x: x.created_at)
 
+    def get_session_message(self, db: Session, session_id: uuid.UUID):
+        statement = (
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.asc())
+        )
+
+        return db.exec(statement).all()
+
 
 chat_history_service = ChatHistoryService()
