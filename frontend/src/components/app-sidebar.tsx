@@ -14,6 +14,7 @@ import { Plus } from "lucide-react";
 import { NavSessions } from "./nav-session";
 import { useChatStore } from "@/hooks/use-chat-store";
 import { useEffect } from "react";
+import { KnowledgeBase } from "./chat/knowledge-base";
 
 export function AppSidebar() {
   const { addSession, setSessions, sessions } = useChatStore();
@@ -36,6 +37,11 @@ export function AppSidebar() {
   return (
     <Sidebar variant="floating" collapsible="icon">
       <SidebarHeader>
+        <div className="flex items-center gap-2 font-semibold">
+          <span className="truncate">DocRAG Engine</span>
+        </div>
+        <KnowledgeBase />
+
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
