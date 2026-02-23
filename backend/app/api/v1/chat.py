@@ -40,6 +40,20 @@ async def list_sessions(db: Session = Depends(get_session)):
     sessions = db.exec(statement).all()
     return sessions
 
+@router.patch("/sessions/{session_id}")
+async def rename_session(session_id: uuid.UUID, title: str, db: Session = Depends(get_session)):
+    updated_session = chat_history_service.update_session_title(db, session_id, title)
+    if not updated_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return updated_session
+
+@router.delete("/sessions/{session_id}")
+async def remove_session(session_id: uuid.UUID, db: Session = Depends(get_session)):
+    success = chat_history_service.delete_session(db, session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"message": "Session deleted successfully"}
+
 @router.get("/history/{session_id}")
 async def get_chat_history(
     session_id: uuid.UUID,

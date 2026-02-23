@@ -30,5 +30,22 @@ class ChatHistoryService:
 
         return db.exec(statement).all()
 
+    def update_session_title(self, db: Session, session_id: uuid.UUID, new_title: str):
+        session = db.get(ChatSession, session_id)
+        if session:
+            session.title = new_title
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+        return session
+
+    def delete_session(self, db: Session, session_id: uuid.UUID):
+        session = db.get(ChatSession, session_id)
+        if session:
+            db.delete(session)
+            db.commit()
+            return True
+        return False
+
 
 chat_history_service = ChatHistoryService()
