@@ -20,7 +20,7 @@ export function AppSidebar() {
 
   useEffect(() => {
     apiRequest<ChatSession[]>("/chat/sessions").then(setSessions);
-  }, []);
+  }, [setSessions]);
 
   const handleCreateSession = async () => {
     try {
@@ -40,7 +40,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="bg-primary text-primary-foreground hover:bg-primary/50 cursor-pointer"
+              className="bg-primary text-primary-foreground hover:bg-primary/50 transition-colors cursor-pointer"
               onClick={handleCreateSession}
             >
               <Plus className="size-5" />
