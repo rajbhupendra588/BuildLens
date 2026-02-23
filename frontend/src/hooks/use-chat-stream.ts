@@ -48,11 +48,12 @@ export function useChatStream() {
             if (data.type === "done") break;
 
             if (data.type === "content") {
-              accumulatedContent += data.content;
+              accumulatedContent += data.text;
+
               setMessages((prev) => {
-                const filtered = prev.filter((m) => m.id !== aiMsgId);
+                const otherMessages = prev.filter((m) => m.id !== aiMsgId);
                 return [
-                  ...filtered,
+                  ...otherMessages,
                   {
                     id: aiMsgId,
                     role: "assistant",
