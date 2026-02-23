@@ -1,7 +1,8 @@
 import httpx
-from typing import List, Dict, Any
+from typing import List, Dict, Any, AsyncGenerator
 from app.core.config import settings
 from app.services.retrieval_service import retrieval_service
+import json
 
 class LLMService:
     def __init__(self):
@@ -39,5 +40,47 @@ class LLMService:
                 raise f"Error from LLM: {response.text}"
 
             return response.json().get("response", "")
+
+
+    async def generate_answer_stream(self, query: str, context_chucks: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+        context_text = retrieval_service.format_context_for_llm(context_chucks)
+
+        system_prompt = (
+            "You are a helpful assistant. Use the provided context to answer the user's question. "
+            "If the answer is not in the context, say that you don't know. "
+            "Do not make up information.\n\n"
+            f"Context:\n{context_text}"
+        )
+
+        payload = {
+            "model": self.model,
+            "prompt": f"Question: {query}",
+            "system": system_prompt,
+            "stream": True
+        }
+
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream("POST", f"{self.base_url}/api/generate", json=payload) as response:
+                if response.status_code != 200:
+                    yield f"Error: {response.status_code}"
+                    return
+                
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                
+                    try:
+                        data = json.loads(line)
+                        chunk = data.get("response", "")
+                        if chunk:
+                            yield f"data: {json.dumps({"text": chunk})}\n\n"
+
+                        if data.get("done") is True:
+                            yield f"data: [DONE]\n\n"
+                            break
+
+                    except json.JSONDecodeError:
+                        print(f"Error decoding JSON: {line}")
+                        continue
 
 llm_service = LLMService()
