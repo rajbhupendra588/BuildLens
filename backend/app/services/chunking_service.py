@@ -37,7 +37,7 @@ class ChunkingService:
             return file_content.decode("utf-8", errors="ignore")
 
     
-    def split_content(self, input_data: Any, file_name: str) -> List[dict]:
+    def split_content(self, input_data: Any, file_name: str, document_id: str = "") -> List[dict]:
         """
         Handles rich DoclingDocument objects and raw strings (txt, md, json, csv).
         """
@@ -54,17 +54,18 @@ class ChunkingService:
                 chunks = self.chunker.chunk(text_to_process)
             except Exception:
                 # Manual fallback if Docling's Pydantic validation still complains
-                return self._simple_split(text_to_process, file_name)
+                return self._simple_split(text_to_process, file_name, document_id)
 
         processed_chunks = []
         for i, chunk in enumerate(chunks):
             chunk_text = self.chunker.serialize(chunk) if hasattr(self.chunker, "serialize") else str(chunk)
             token_count = self.chunker.tokenizer.count_tokens(chunk_text)
             
-            processed_chunks.append({ 
+            processed_chunks.append({
                 "id": str(uuid.uuid4()),
                 "content": chunk_text,
                 "metadata": {
+                    "document_id": document_id,
                     "file_name": file_name,
                     "chunk_index": i,
                     "char_count": len(chunk_text),
@@ -74,19 +75,20 @@ class ChunkingService:
         return processed_chunks
 
         
-    def _simple_split(self, text: str, file_name: str, chunk_size: int = 1000) -> List[dict]:
+    def _simple_split(self, text: str, file_name: str, document_id: str = "", chunk_size: int = 1000) -> List[dict]:
         """A basic character-based fallback for problematic strings."""
         # Simple split by character length as a last resort
         return [{
             "id": str(uuid.uuid4()),
             "content": text[i:i+chunk_size],
             "metadata": {
+                "document_id": document_id,
                 "file_name": file_name,
                 "chunk_index": idx,
                 "char_count": len(text[i:i+chunk_size]),
                 "token_count": 0
-                }
-            } for idx, i in enumerate(range(0, len(text), chunk_size))]
+            }
+        } for idx, i in enumerate(range(0, len(text), chunk_size))]
     
 chunking_service = ChunkingService()
 

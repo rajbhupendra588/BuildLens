@@ -2,6 +2,7 @@ from typing import List, Dict, Any
 from app.core.config import settings
 from app.services.vector_service import vector_service
 from qdrant_client.models import Filter
+from qdrant_client import models
 
 class RetrievalService:
     def __init__(self):
@@ -44,6 +45,36 @@ class RetrievalService:
             context_parts.append(f"--- Context {i+1} (Source: {source}) ---\n{content}")
         
         return "\n\n".join(context_parts)
+
+    async def list_indexed_documents(self):
+        results, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            limit=10000,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        docs = {}
+        for point in results:
+            meta = point.payload.get("metadata", {})
+            doc_id = meta.get("document_id")
+            if doc_id and doc_id not in docs:
+                docs[doc_id] = meta.get("file_name", "unknown")
+
+        return [{"document_id": k, "file_name": v} for k, v in docs.items()]
+
+    async def delete_document_by_id(self, document_id: str):
+        return self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="metadata.document_id",
+                        match=models.MatchValue(value=document_id)
+                    )
+                ]
+            )
+        )
 
        
 retrieval_service = RetrievalService()

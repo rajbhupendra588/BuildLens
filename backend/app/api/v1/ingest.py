@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, Depends
+import uuid
+from fastapi import APIRouter, UploadFile, File
 from app.services.file_service import file_service
 from app.services.chunking_service import chunking_service
 from app.services.vector_service import vector_service
@@ -15,19 +16,22 @@ async def upload_document(file: UploadFile = File(...)):
     if file.filename.endswith('.csv'):
         final_text = chunking_service.process_csv_to_sentences(extracted_raw)
     elif file.filename.endswith(('.xlsx', '.json', '.txt', '.md', '.puml')):
-
         final_text = extracted_raw.decode("utf-8") if isinstance(extracted_raw, bytes) else str(extracted_raw)
     else:
         final_text = extracted_raw
 
+    # Stable ID for this upload — all chunks share the same document_id
+    document_id = str(uuid.uuid4())
+
     # Chunking
-    chunks = chunking_service.split_content(final_text, file.filename)
+    chunks = chunking_service.split_content(final_text, file.filename, document_id)
 
     vector_service.upsert_chunks(chunks)
     return {
+        "document_id": document_id,
         "file_name": file.filename,
         "total_chunks": len(chunks),
         "chunks_preview": chunks[:5],
         "status": "success",
-        "message": f"Successfully indexed {len(chunks)} chunnks into Vector DB"
+        "message": f"Successfully indexed {len(chunks)} chunks into Vector DB"
     }
