@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import APIRouter, Query, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 import uuid
@@ -66,15 +66,29 @@ async def get_chat_history(
     message = chat_history_service.get_session_message(db, session_id)
     return message
 
+async def update_session_title_logic(db: Session, session_id: uuid.UUID, first_question: str):
+    session = db.get(ChatSession, session_id)
+
+    if session and session.title == "New Conversation":
+        new_title = await llm_service.generate_title(first_question)
+        session.title = new_title
+        db.add(session)
+        db.commit()
+        print(f"DEBUG: Session {session_id} renamed to: {new_title}")
+
+
 @router.get("/ask-stream")
 async def ask_question_stream(
     question: str = Query(...), 
     session_id: uuid.UUID = Query(...),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_session)
 ):
     chat_history_service.add_message(db, session_id, "user", question)
 
     history = chat_history_service.get_history(db, session_id, limit=10)
+    if len(history) <= 1:
+        background_tasks.add_task(update_session_title_logic, db, session_id, question)
 
     context_chunks = await retrieval_service.search(question, limit=5)
 

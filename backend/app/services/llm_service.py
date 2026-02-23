@@ -9,6 +9,16 @@ class LLMService:
         self.base_url = settings.LLM.OLLAMA_BASE_URL
         self.model = "kimi-k2.5:cloud"
 
+    async def generate_title(self, first_question: str) -> str:
+        prompt = (
+            "Generate a very short, concise title (max 5 words) for a chat session "
+            f"based on this first message: '{first_question}'. "
+            "Return only the title text without quotes or punctuation."
+        )
+
+        title = await self.generate_answer(first_question, [])
+        return title.strip().strip('"')
+
     async def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
         context_text = retrieval_service.format_context_for_llm(context_chunks)
 
