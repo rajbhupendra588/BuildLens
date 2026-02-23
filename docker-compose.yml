@@ -1,4 +1,24 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: docrag-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-docrag_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - docrag-net
+
   qdrant:
     image: qdrant/qdrant:v1.17.0
     container_name: docrag-vector-db
@@ -33,6 +53,8 @@ services:
     depends_on:
       qdrant:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     networks:
       - docrag-net
 
@@ -52,6 +74,7 @@ services:
 volumes:
   backend_venv:
   frontend_node_modules:
+  postgres_data:
 
 networks:
   docrag-net:

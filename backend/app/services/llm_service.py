@@ -42,14 +42,23 @@ class LLMService:
             return response.json().get("response", "")
 
 
-    async def generate_answer_stream(self, query: str, context_chucks: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def generate_answer_stream(
+        self, 
+        query: str, 
+        context_chucks: List[Dict[str, Any]],
+        history: List[Dict[str, Any]]
+    ) -> AsyncGenerator[str, None]:
         context_text = retrieval_service.format_context_for_llm(context_chucks)
 
+        history_text = ""
+        if history:
+            history_text = "\n".join([f"{msg.role.capitalize()}: {msg.content}" for msg in history])
+
         system_prompt = (
-            "You are a helpful assistant. Use the provided context to answer the user's question. "
-            "If the answer is not in the context, say that you don't know. "
-            "Do not make up information.\n\n"
-            f"Context:\n{context_text}"
+            "You are a helpful assistant. Use the provided context and conversation history to answer.\n"
+            f"Conversation History:\n{history_text}\n\n"
+            f"Context from Documents:\n{context_text}\n\n"
+            "If the answer is not in the context, say you don't know."
         )
 
         payload = {

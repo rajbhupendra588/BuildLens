@@ -1,0 +1,25 @@
+from sqlmodel import Session, select
+from app.models.chat import ChatSession, ChatMessage
+import uuid
+
+class ChatHistoryService:
+    def create_session(self, db: Session, title: str = "New Chat"):
+        session = ChatSession(title=title)
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        return session
+    
+    def add_message(self, db: Session, session_id: uuid.UUID, role: str, content: str):
+        message = ChatMessage(session_id=session_id, role=role, content=content)
+        db.add(message)
+        db.commit()
+        return message
+    
+    def get_history(self, db: Session, session_id: uuid.UUID, limit: int = 10):
+        statement = select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.desc()).limit(limit)
+        messages = db.exec(statement).all()
+        return sorted(messages, key=lambda x: x.created_at)
+
+
+chat_history_service = ChatHistoryService()

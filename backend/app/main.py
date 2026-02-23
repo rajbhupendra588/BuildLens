@@ -5,6 +5,7 @@ from qdrant_client import QdrantClient
 from app.core.config import settings
 from app.api.v1 import ingest, query, chat
 from app.core.exceptions import global_exception_handler
+from app.core.database import init_db
 
 # Fetch version from pyproject.toml (Standard for 2026)
 try:
@@ -24,6 +25,10 @@ app.include_router(chat.router, prefix="/api/v1")
 
 # Register Exception Handler
 app.add_exception_handler(Exception, global_exception_handler)
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 @app.get("/health")
 async def health_check():

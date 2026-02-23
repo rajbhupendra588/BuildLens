@@ -19,6 +19,18 @@ class LLMSettings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
 
+class DatabaseSettings(BaseSettings):
+    """Configuration for PostgreSQL."""
+    USER: str = "postgres"
+    PASSWORD: str = "password"
+    HOST: str = "localhost"
+    PORT: int = 5432
+    NAME: str = "docrag_db"
+
+    @property
+    def URL(self) -> str:
+        return f"postgresql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.NAME}"
+
 class Settings(BaseSettings):
     """Global Application Settings."""
     # App Config
@@ -31,6 +43,7 @@ class Settings(BaseSettings):
     # Nested Settings
     QDRANT: QdrantSettings = QdrantSettings()
     LLM: LLMSettings = LLMSettings()
+    DB: DatabaseSettings = DatabaseSettings()
 
     model_config = SettingsConfigDict(
         env_file=DOTENV_PATH if DOTENV_PATH.exists() else None,
