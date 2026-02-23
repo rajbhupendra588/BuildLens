@@ -62,7 +62,7 @@ class LLMService:
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream("POST", f"{self.base_url}/api/generate", json=payload) as response:
                 if response.status_code != 200:
-                    yield f"Error: {response.status_code}"
+                    yield f"data: {json.dumps({'type': 'error', 'content': f'LLM Error: {response.status_code}'})}\n\n"
                     return
                 
                 async for line in response.aiter_lines():
@@ -73,14 +73,16 @@ class LLMService:
                         data = json.loads(line)
                         chunk = data.get("response", "")
                         if chunk:
-                            yield f"data: {json.dumps({"text": chunk})}\n\n"
+                            yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
 
                         if data.get("done") is True:
-                            yield f"data: [DONE]\n\n"
+                            yield f"data: {json.dumps({'type': 'done'})}\n\n"
                             break
 
                     except json.JSONDecodeError:
                         print(f"Error decoding JSON: {line}")
                         continue
+                    except Exception as e:
+                        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
 llm_service = LLMService()

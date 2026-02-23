@@ -33,13 +33,8 @@ class FileService:
         content = await file.read()
 
         # Stardardize .puml and text files (read directly)
-        if ext in {".puml", ".txt", ".md"}:
-            return content.decode("utf-8")
-
-        # JSON
-        if ext == ".json":
-            data = json.loads(content)
-            return json.dumps(data, indent=2)
+        if ext in {".csv", ".xlsx", ".json", ".txt", ".md", ".puml"}:
+            return content
 
         # ASCII filename to avoid UnicodeEncodeError
         safe_filename = f"temp_{uuid.uuid4()}{ext}"
@@ -48,11 +43,6 @@ class FileService:
         try:
             with open(temp_path, "wb") as f:
                 f.write(content)
-
-            # CSV / Excel
-            if ext in {".csv", ".xlsx"}:
-                df = pd.read_csv(temp_path) if ext == ".csv" else pd.read_excel(temp_path)
-                return df.to_markdown()
 
             # Docling for PDF, DOCX, Images
             result = self.converter.convert(temp_path)

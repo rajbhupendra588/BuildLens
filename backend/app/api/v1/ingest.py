@@ -10,15 +10,18 @@ async def upload_document(file: UploadFile = File(...)):
     # Validate
     await file_service.validate_file(file)
 
-    file_content = await file.read()
+    extracted_raw = await file_service.process_file(file)
 
     if file.filename.endswith('.csv'):
-        extracted_data = chunking_service.process_csv_to_sentences(file_content)
+        final_text = chunking_service.process_csv_to_sentences(extracted_raw)
+    elif file.filename.endswith(('.xlsx', '.json', '.txt', '.md', '.puml')):
+
+        final_text = extracted_raw.decode("utf-8") if isinstance(extracted_raw, bytes) else str(extracted_raw)
     else:
-        extracted_data = await file_service.process_file(file)
+        final_text = extracted_raw
 
     # Chunking
-    chunks = chunking_service.split_content(extracted_data, file.filename)
+    chunks = chunking_service.split_content(final_text, file.filename)
 
     vector_service.upsert_chunks(chunks)
     return {

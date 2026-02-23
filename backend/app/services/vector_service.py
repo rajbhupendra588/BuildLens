@@ -6,10 +6,16 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 from fastembed import TextEmbedding
 
 class VectorService:
+    _model = None
+
     def __init__(self):
         self.client = QdrantClient(host=settings.QDRANT.HOST, port=settings.QDRANT.PORT)
-        self.model = TextEmbedding(model_name=settings.EMBED_MODEL)
         self.collection_name = settings.QDRANT.COLLECTION_NAME
+
+        if VectorService._model is None:
+            VectorService._model = TextEmbedding(model_name=settings.EMBED_MODEL)
+        
+        self.model = VectorService._model
         self._ensure_collection()
 
     def _ensure_collection(self):

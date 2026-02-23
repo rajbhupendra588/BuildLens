@@ -9,7 +9,7 @@ class RetrievalService:
         self.model = vector_service.model
         self.collection_name = settings.QDRANT.COLLECTION_NAME
 
-    async def search(self, query: str, limit: int = 5, min_score: float = 0.2) -> List[Dict[str, Any]]:
+    async def search(self, query: str, limit: int = 5, min_score: float = 0.3) -> List[Dict[str, Any]]:
         """Search for relevant chunks."""
         query_vector = list(self.model.embed([query]))[0].tolist()
         print("query_vector: ", query_vector)
