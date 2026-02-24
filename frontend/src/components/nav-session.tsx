@@ -29,7 +29,7 @@ export function NavSessions({ sessions }: { sessions: ChatSession[] }) {
           const isActive = pathname === `/chat/${session.id}`;
           return (
             <SidebarMenuItem key={session.id ?? index}>
-              <SidebarMenuButton asChild isActive={isActive}>
+              <SidebarMenuButton asChild isActive={isActive} tooltip={session.title}>
                 <Link href={`/chat/${session.id}`}>
                   <MessageSquare className="size-4" />
                   <span className="truncate">{session.title}</span>

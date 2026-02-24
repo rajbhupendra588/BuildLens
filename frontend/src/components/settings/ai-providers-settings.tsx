@@ -18,16 +18,50 @@ import { toast } from "sonner";
 import { ModelSelector } from "@/components/chat/model-selector";
 
 const CLOUD_PROVIDERS = [
-  { id: "openai", label: "OpenAI", keyName: "openai_api_key", placeholder: "sk-..." },
-  { id: "anthropic", label: "Anthropic", keyName: "anthropic_api_key", placeholder: "sk-ant-..." },
-  { id: "gemini", label: "Google Gemini", keyName: "gemini_api_key", placeholder: "AIza..." },
-  { id: "openrouter", label: "OpenRouter", keyName: "openrouter_api_key", placeholder: "sk-or-..." },
+  {
+    id: "openai",
+    label: "OpenAI",
+    keyName: "openai_api_key",
+    placeholder: "sk-...",
+  },
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    keyName: "anthropic_api_key",
+    placeholder: "sk-ant-...",
+  },
+  {
+    id: "gemini",
+    label: "Google Gemini",
+    keyName: "gemini_api_key",
+    placeholder: "AIza...",
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    keyName: "openrouter_api_key",
+    placeholder: "sk-or-...",
+  },
   { id: "zai", label: "Z.AI", keyName: "zai_api_key", placeholder: "API key" },
-  { id: "moonshot", label: "Moonshot AI", keyName: "moonshot_api_key", placeholder: "API key" },
-  { id: "minimax", label: "MiniMax", keyName: "minimax_api_key", placeholder: "API key" },
+  {
+    id: "moonshot",
+    label: "Moonshot AI",
+    keyName: "moonshot_api_key",
+    placeholder: "API key",
+  },
+  {
+    id: "minimax",
+    label: "MiniMax",
+    keyName: "minimax_api_key",
+    placeholder: "API key",
+  },
 ];
 
-function ConnectionStatus({ result }: { result: TestConnectionResponse | null }) {
+function ConnectionStatus({
+  result,
+}: {
+  result: TestConnectionResponse | null;
+}) {
   if (!result) return null;
   return (
     <span
@@ -45,13 +79,16 @@ function ConnectionStatus({ result }: { result: TestConnectionResponse | null })
 
 export function AiProvidersSettings() {
   const [ollamaUrl, setOllamaUrl] = useState("");
-  const [ollamaStatus, setOllamaStatus] = useState<TestConnectionResponse | null>(null);
+  const [ollamaStatus, setOllamaStatus] =
+    useState<TestConnectionResponse | null>(null);
   const [ollamaTesting, setOllamaTesting] = useState(false);
 
   const [existingSettings, setExistingSettings] = useState<AppSettings>({});
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
-  const [testStatus, setTestStatus] = useState<Record<string, TestConnectionResponse | null>>({});
+  const [testStatus, setTestStatus] = useState<
+    Record<string, TestConnectionResponse | null>
+  >({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
 
@@ -71,7 +108,7 @@ export function AiProvidersSettings() {
         {
           method: "POST",
           body: JSON.stringify({ provider: "ollama", base_url: ollamaUrl }),
-        }
+        },
       );
       setOllamaStatus(result);
     } catch {
@@ -93,7 +130,7 @@ export function AiProvidersSettings() {
             provider: providerId,
             api_key: apiKeys[keyName] || undefined,
           }),
-        }
+        },
       );
       setTestStatus((prev) => ({ ...prev, [providerId]: result }));
     } catch {
@@ -144,6 +181,7 @@ export function AiProvidersSettings() {
               onChange={(e) => setOllamaUrl(e.target.value)}
               placeholder="http://localhost:11434"
               className="flex-1"
+              autoComplete="off"
             />
             <Button
               variant="outline"
@@ -172,10 +210,14 @@ export function AiProvidersSettings() {
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Input
+                    autoComplete="off"
                     type={showKey[keyName] ? "text" : "password"}
                     value={apiKeys[keyName] ?? ""}
                     onChange={(e) =>
-                      setApiKeys((prev) => ({ ...prev, [keyName]: e.target.value }))
+                      setApiKeys((prev) => ({
+                        ...prev,
+                        [keyName]: e.target.value,
+                      }))
                     }
                     placeholder={
                       existingSettings[keyName] === "****"
@@ -187,7 +229,10 @@ export function AiProvidersSettings() {
                   <button
                     type="button"
                     onClick={() =>
-                      setShowKey((prev) => ({ ...prev, [keyName]: !prev[keyName] }))
+                      setShowKey((prev) => ({
+                        ...prev,
+                        [keyName]: !prev[keyName],
+                      }))
                     }
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >

@@ -9,6 +9,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
 } from "./ui/sidebar";
 import { Plus, Settings } from "lucide-react";
 import { NavSessions } from "./nav-session";
@@ -41,19 +42,30 @@ export function AppSidebar() {
   return (
     <Sidebar variant="floating" collapsible="icon">
       <SidebarHeader>
-        <div className="flex items-center gap-2 font-semibold">
-          <span className="truncate">DocRAG Engine</span>
+        {/* Title row — trigger always visible; title text hidden when collapsed */}
+        <div className="flex items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center">
+          <SidebarTrigger />
+          <Link href="/">
+            <span className="font-semibold text-sm truncate group-data-[collapsible=icon]:hidden">
+              DocRAG Engine
+            </span>
+          </Link>
         </div>
-        <KnowledgeBase />
 
         <SidebarMenu>
+          {/* Knowledge Base */}
+          <SidebarMenuItem>
+            <KnowledgeBase />
+          </SidebarMenuItem>
+
+          {/* New Chat */}
           <SidebarMenuItem>
             <SidebarMenuButton
-              size="lg"
-              className="bg-primary text-primary-foreground hover:bg-primary/50 transition-colors cursor-pointer"
+              tooltip="New Chat"
+              className="bg-primary text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground cursor-pointer"
               onClick={handleCreateSession}
             >
-              <Plus className="size-5" />
+              <Plus className="size-4" />
               <span>New Chat</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -67,7 +79,7 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
+            <SidebarMenuButton asChild tooltip="Settings">
               <Link href="/settings">
                 <Settings className="size-4" />
                 <span>Settings</span>
@@ -75,7 +87,7 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="p-2 text-xs text-muted-foreground text-center">
+        <div className="p-2 text-xs text-muted-foreground text-center group-data-[collapsible=icon]:hidden">
           DocRAG v0.1.0
         </div>
       </SidebarFooter>

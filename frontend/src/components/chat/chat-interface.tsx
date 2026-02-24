@@ -67,16 +67,16 @@ export function ChatInterface() {
 
   if (!currentSessionId) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center text-muted-foreground">
         Select a session or start a new chat to begin.
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full relative">
-      {/* Message Area */}
-      <ScrollArea ref={scrollRef} className="flex-1 pr-4">
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Message Area — min-h-0 prevents flex children from overflowing */}
+      <ScrollArea ref={scrollRef} className="flex-1 min-h-0 pr-4">
         <div className="flex flex-col py-4">
           {isHistoryLoading ? (
             <div className="p-8 space-y-4">
@@ -100,7 +100,7 @@ export function ChatInterface() {
       </ScrollArea>
 
       {/* Input Area */}
-      <div className="border-t bg-background p-4 sticky bottom-0">
+      <div className="border-t bg-background p-4 shrink-0">
         {/* Model selector row */}
         <div className="flex justify-center mb-2 max-w-3xl mx-auto">
           <ModelSelector />

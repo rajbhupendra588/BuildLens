@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { SidebarMenuButton } from "@/components/ui/sidebar";
 import {
   FileText,
   Trash2,
@@ -128,9 +129,12 @@ export function KnowledgeBase() {
     <>
       <Dialog onOpenChange={(open) => open && fetchDocs()}>
         <DialogTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-9 w-9">
-            <Database className="size-5" />
-          </Button>
+          <SidebarMenuButton tooltip="Knowledge Base">
+            <div className="flex items-center gap-2 cursor-pointer">
+              <Database className="size-4" />
+              <span>Knowledge Base</span>
+            </div>
+          </SidebarMenuButton>
         </DialogTrigger>
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden gap-0">
           {/* Header Section */}
