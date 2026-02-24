@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from qdrant_client import QdrantClient
 from app.core.config import settings
-from app.api.v1 import ingest, query, chat, documents
+from app.api.v1 import ingest, query, chat, documents, models
 from app.core.exceptions import global_exception_handler
 from app.core.database import init_db
 
@@ -32,6 +32,7 @@ app.include_router(ingest.router, prefix="/api/v1")
 app.include_router(query.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(models.router, prefix="/api/v1")
 
 # Register Exception Handler
 app.add_exception_handler(Exception, global_exception_handler)

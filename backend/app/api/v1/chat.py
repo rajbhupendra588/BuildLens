@@ -81,10 +81,12 @@ async def update_session_title_logic(db: Session, session_id: uuid.UUID, first_q
 async def ask_question_stream(
     question: str = Query(...), 
     session_id: uuid.UUID = Query(...),
+    provider: str = Query("ollama"),
+    model: str = Query("minimax-m2:cloud"),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_session)
 ):
-    chat_history_service.add_message(db, session_id, "user", question)
+    chat_history_service.add_message(db, session_id, "user", question, provider, model)
 
     history = chat_history_service.get_history(db, session_id, limit=10)
     if len(history) <= 1:
@@ -99,7 +101,9 @@ async def ask_question_stream(
 
     async def generate_with_history_tracking():
         full_ai_response = ""
-        async for chunk_raw in llm_service.generate_answer_stream(question, context_chunks, history):
+        async for chunk_raw in llm_service.generate_answer_stream(
+            question, context_chunks, history, provider=provider, model=model
+        ):
             yield chunk_raw
 
             try:
@@ -122,7 +126,7 @@ async def ask_question_stream(
         if full_ai_response:
             try:
                 print(f"DEBUG: Saving assistant response: {full_ai_response[:50]}...")
-                chat_history_service.add_message(db, session_id, "assistant", full_ai_response)
+                chat_history_service.add_message(db, session_id, "assistant", full_ai_response, provider, model)
             except Exception as e:
                 print(f"Error saving assistant response: {e}")
         else:

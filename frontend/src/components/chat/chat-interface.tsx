@@ -11,6 +11,7 @@ import { Button } from "../ui/button";
 import { apiRequest } from "@/lib/api";
 import { Message } from "@/types/chat";
 import { Skeleton } from "../ui/skeleton";
+import { ModelSelector } from "./model-selector";
 
 export function ChatInterface() {
   const { currentSessionId } = useChatStore();
@@ -100,6 +101,12 @@ export function ChatInterface() {
 
       {/* Input Area */}
       <div className="border-t bg-background p-4 sticky bottom-0">
+        {/* Model selector row */}
+        <div className="flex justify-center mb-2 max-w-3xl mx-auto">
+          <ModelSelector />
+        </div>
+
+        {/* Input + send row */}
         <div className="flex items-center gap-2 max-w-3xl mx-auto">
           <Input
             placeholder="Ask anything about your documents..."
@@ -121,6 +128,7 @@ export function ChatInterface() {
             )}
           </Button>
         </div>
+
         <p className="text-[10px] text-center text-muted-foreground mt-2">
           AI-generated content can be incorrect. Please verify important
           information.

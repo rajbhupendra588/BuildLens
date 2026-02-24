@@ -1,25 +1,36 @@
+import json
 import httpx
 from typing import List, Dict, Any, AsyncGenerator
+
 from app.core.config import settings
 from app.services.retrieval_service import retrieval_service
-import json
+
 
 class LLMService:
     def __init__(self):
-        self.base_url = settings.LLM.OLLAMA_BASE_URL
-        self.model = "minimax-m2:cloud"
+        self.ollama_base_url = settings.LLM.OLLAMA_BASE_URL
 
-    async def generate_title(self, first_question: str) -> str:
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    async def generate_title(self, first_question: str, model: str = "minimax-m2:cloud") -> str:
+        """Generate a short session title from the first user message (Ollama)."""
         prompt = (
             "Generate a very short, concise title (max 5 words) for a chat session "
             f"based on this first message: '{first_question}'. "
             "Return only the title text without quotes or punctuation."
         )
-
-        title = await self.generate_answer(prompt, [])
+        title = await self.generate_answer(prompt, [], model=model)
         return title.strip().strip('"')
 
-    async def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
+    async def generate_answer(
+        self,
+        query: str,
+        context_chunks: List[Dict[str, Any]],
+        model: str = "minimax-m2:cloud",
+    ) -> str:
+        """Non-streaming answer via Ollama (used for title generation)."""
         context_text = retrieval_service.format_context_for_llm(context_chunks)
 
         system_prompt = (
@@ -30,78 +41,155 @@ class LLMService:
         )
 
         timeout = httpx.Timeout(300.0, read=300.0)
-
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
-                f"{self.base_url}/api/generate",
+                f"{self.ollama_base_url}/api/generate",
                 json={
-                    "model": self.model,
+                    "model": model,
                     "prompt": f"Question: {query}",
                     "system": system_prompt,
                     "stream": False,
-                    "options": {
-                        "num_ctx": 4096, # context window
-                        "temperature": 0
-                    }
-                }
+                    "options": {"num_ctx": 4096, "temperature": 0},
+                },
             )
 
-            if response.status_code != 200:
-                raise f"Error from LLM: {response.text}"
+        if response.status_code != 200:
+            raise RuntimeError(f"Ollama error: {response.text}")
 
-            return response.json().get("response", "")
-
+        return response.json().get("response", "")
 
     async def generate_answer_stream(
-        self, 
-        query: str, 
-        context_chucks: List[Dict[str, Any]],
-        history: List[Dict[str, Any]]
+        self,
+        query: str,
+        context_chunks: List[Dict[str, Any]],
+        history: List[Any],
+        provider: str,
+        model: str,
     ) -> AsyncGenerator[str, None]:
-        context_text = retrieval_service.format_context_for_llm(context_chucks)
+        """Route streaming generation to the correct provider."""
+        system_prompt = self._prepare_system_prompt(context_chunks, history)
 
-        history_text = ""
-        if history:
-            history_text = "\n".join([f"{msg.role.capitalize()}: {msg.content}" for msg in history])
+        if provider == "ollama":
+            async for chunk in self._stream_ollama(model, query, system_prompt):
+                yield chunk
+        elif provider == "openai":
+            async for chunk in self._stream_openai(model, query, system_prompt):
+                yield chunk
+        elif provider == "gemini":
+            async for chunk in self._stream_gemini(model, query, system_prompt):
+                yield chunk
+        else:
+            yield f"data: {json.dumps({'type': 'error', 'content': f'Unsupported provider: {provider}'})}\n\n"
 
-        system_prompt = (
+    async def fetch_ollama_models(self) -> List[Dict[str, Any]]:
+        """Return list of locally available Ollama models."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{self.ollama_base_url}/api/tags")
+                return resp.json().get("models", [])
+        except Exception:
+            return []
+
+    # ------------------------------------------------------------------
+    # Private: Provider streaming implementations
+    # ------------------------------------------------------------------
+
+    async def _stream_ollama(
+        self, model: str, query: str, system: str
+    ) -> AsyncGenerator[str, None]:
+        payload = {
+            "model": model,
+            "prompt": f"Question: {query}",
+            "system": system,
+            "stream": True,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST", f"{self.ollama_base_url}/api/generate", json=payload
+                ) as resp:
+                    if resp.status_code != 200:
+                        yield f"data: {json.dumps({'type': 'error', 'content': f'Ollama error: {resp.status_code}'})}\n\n"
+                        return
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                            text = data.get("response", "")
+                            if text:
+                                yield f"data: {json.dumps({'type': 'content', 'text': text})}\n\n"
+                            if data.get("done"):
+                                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                                break
+                        except json.JSONDecodeError:
+                            continue
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+
+    async def _stream_openai(
+        self, model: str, query: str, system: str
+    ) -> AsyncGenerator[str, None]:
+        try:
+            from openai import AsyncOpenAI
+
+            client = AsyncOpenAI(api_key=settings.LLM.OPENAI_API_KEY)
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": query},
+            ]
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=True,
+            )
+            async for chunk in stream:
+                text = chunk.choices[0].delta.content or ""
+                if text:
+                    yield f"data: {json.dumps({'type': 'content', 'text': text})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+
+    async def _stream_gemini(
+        self, model: str, query: str, system: str
+    ) -> AsyncGenerator[str, None]:
+        try:
+            import google.generativeai as genai
+
+            genai.configure(api_key=settings.LLM.GEMINI_API_KEY)
+            model_instance = genai.GenerativeModel(
+                model_name=model,
+                system_instruction=system,
+            )
+            response = await model_instance.generate_content_async(
+                query,
+                stream=True,
+            )
+            async for chunk in response:
+                if chunk.text:
+                    yield f"data: {json.dumps({'type': 'content', 'text': chunk.text})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _prepare_system_prompt(
+        self, context_chunks: List[Dict[str, Any]], history: List[Any]
+    ) -> str:
+        context_text = retrieval_service.format_context_for_llm(context_chunks)
+        history_text = (
+            "\n".join([f"{m.role}: {m.content}" for m in history]) if history else ""
+        )
+        return (
             "You are a helpful assistant. Use the provided context and conversation history to answer.\n"
             f"Conversation History:\n{history_text}\n\n"
             f"Context from Documents:\n{context_text}\n\n"
             "If the answer is not in the context, say you don't know."
         )
 
-        payload = {
-            "model": self.model,
-            "prompt": f"Question: {query}",
-            "system": system_prompt,
-            "stream": True
-        }
-
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream("POST", f"{self.base_url}/api/generate", json=payload) as response:
-                if response.status_code != 200:
-                    yield f"data: {json.dumps({'type': 'error', 'content': f'LLM Error: {response.status_code}'})}\n\n"
-                    return
-                
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                
-                    try:
-                        data = json.loads(line)
-                        chunk = data.get("response", "")
-                        if chunk:
-                            yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
-
-                        if data.get("done") is True:
-                            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                            break
-
-                    except json.JSONDecodeError:
-                        print(f"Error decoding JSON: {line}")
-                        continue
-                    except Exception as e:
-                        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
 llm_service = LLMService()

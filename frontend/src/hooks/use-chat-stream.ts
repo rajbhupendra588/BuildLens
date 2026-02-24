@@ -8,7 +8,7 @@ import { apiStream } from "@/lib/api";
 export function useChatStream() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const { currentSessionId } = useChatStore();
+  const { currentSessionId, selectedProvider, selectedModel } = useChatStore();
 
   const sendMessage = async (question: string) => {
     if (!question.trim() || !currentSessionId) return;
@@ -24,9 +24,14 @@ export function useChatStream() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const reader = await apiStream(
-        `/chat/ask-stream?question=${encodeURIComponent(question)}&session_id=${currentSessionId}`,
-      );
+      const params = new URLSearchParams({
+        question,
+        session_id: currentSessionId,
+        provider: selectedProvider,
+        model: selectedModel,
+      });
+
+      const reader = await apiStream(`/chat/ask-stream?${params.toString()}`);
       const decoder = new TextDecoder();
 
       const aiMsgId = crypto.randomUUID();
@@ -47,6 +52,11 @@ export function useChatStream() {
             const data = JSON.parse(dataStr);
             if (data.type === "done") break;
 
+            if (data.type === "error") {
+              console.error("LLM Error:", data.content);
+              break;
+            }
+
             if (data.type === "content") {
               accumulatedContent += data.text;
 
@@ -56,7 +66,7 @@ export function useChatStream() {
                   ...otherMessages,
                   {
                     id: aiMsgId,
-                    role: "assistant",
+                    role: "assistant" as const,
                     content: accumulatedContent,
                     created_at: new Date().toISOString(),
                   },

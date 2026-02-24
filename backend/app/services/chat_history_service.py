@@ -10,8 +10,8 @@ class ChatHistoryService:
         db.refresh(session)
         return session
     
-    def add_message(self, db: Session, session_id: uuid.UUID, role: str, content: str):
-        message = ChatMessage(session_id=session_id, role=role, content=content)
+    def add_message(self, db: Session, session_id: uuid.UUID, role: str, content: str, provider: str, model: str):
+        message = ChatMessage(session_id=session_id, role=role, content=content, provider=provider, model=model)
         db.add(message)
         db.commit()
         return message

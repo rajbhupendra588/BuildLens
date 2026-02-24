@@ -8,6 +8,10 @@ import uuid
 class ChatSession(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     title: str = Field(default="New Conversation")
+
+    provider: str = Field(default="ollama")
+    model_name: str = Field(default="minimax-m2:cloud")
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -21,8 +25,10 @@ class ChatMessage(SQLModel, table=True):
     session_id: uuid.UUID = Field(
         sa_column=Column(pg.UUID(as_uuid=True), ForeignKey("chatsession.id", ondelete="CASCADE"), nullable=False)
     )
-    role: str = Field(index=True) # user, assistant, system
+    role: str = Field(index=True)  # user, assistant, system
     content: str
+    provider: str = Field(default="ollama")
+    model: str = Field(default="")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     session: ChatSession = Relationship(back_populates="messages")
