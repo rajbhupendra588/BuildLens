@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useChatStore } from "@/hooks/use-chat-store";
 import { apiRequest } from "@/lib/api";
+import { useRouter } from "next/navigation";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,7 +36,8 @@ export function SessionActions({
   sessionId: string;
   initialTitle: string;
 }) {
-  const { removeSession, updateSessionTitle } = useChatStore();
+  const { removeSession, updateSessionTitle, currentSessionId } = useChatStore();
+  const router = useRouter();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [newTitle, setNewTitle] = useState(initialTitle);
@@ -45,6 +47,9 @@ export function SessionActions({
     try {
       await apiRequest(`/chat/sessions/${sessionId}`, { method: "DELETE" });
       removeSession(sessionId);
+      if (currentSessionId === sessionId) {
+        router.push("/");
+      }
     } catch (error) {
       console.error("Failed to delete session", error);
     }

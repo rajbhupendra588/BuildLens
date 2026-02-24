@@ -10,14 +10,17 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "./ui/sidebar";
-import { Plus } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 import { NavSessions } from "./nav-session";
 import { useChatStore } from "@/hooks/use-chat-store";
 import { useEffect } from "react";
 import { KnowledgeBase } from "./chat/knowledge-base";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export function AppSidebar() {
   const { addSession, setSessions, sessions } = useChatStore();
+  const router = useRouter();
 
   useEffect(() => {
     apiRequest<ChatSession[]>("/chat/sessions").then(setSessions);
@@ -29,6 +32,7 @@ export function AppSidebar() {
         method: "POST",
       });
       addSession(newSession);
+      router.push(`/chat/${newSession.id}`);
     } catch (error) {
       console.error("Create session failed", error);
     }
@@ -61,7 +65,17 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
-        <div className="p-4 text-xs text-muted-foreground text-center">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <Link href="/settings">
+                <Settings className="size-4" />
+                <span>Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <div className="p-2 text-xs text-muted-foreground text-center">
           DocRAG v0.1.0
         </div>
       </SidebarFooter>

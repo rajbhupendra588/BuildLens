@@ -4,9 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from qdrant_client import QdrantClient
 from app.core.config import settings
-from app.api.v1 import ingest, query, chat, documents, models
+from app.api.v1 import ingest, query, chat, documents, models, settings as settings_router, data as data_router
 from app.core.exceptions import global_exception_handler
 from app.core.database import init_db
+from app.models.settings import AppSetting as _AppSetting  # noqa: F401 — ensures AppSetting table is registered
 
 # Fetch version from pyproject.toml (Standard for 2026)
 try:
@@ -33,6 +34,8 @@ app.include_router(query.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(models.router, prefix="/api/v1")
+app.include_router(settings_router.router, prefix="/api/v1")
+app.include_router(data_router.router, prefix="/api/v1")
 
 # Register Exception Handler
 app.add_exception_handler(Exception, global_exception_handler)

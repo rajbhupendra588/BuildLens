@@ -53,4 +53,28 @@ class VectorService:
         )
         return True
 
+    def get_stats(self) -> dict:
+        """Return total chunks and unique document count from Qdrant."""
+        total_chunks = self.client.count(collection_name=self.collection_name).count
+
+        results, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            limit=10000,
+            with_payload=True,
+            with_vectors=False,
+        )
+        doc_ids = set()
+        for point in results:
+            meta = point.payload.get("metadata", {})
+            doc_id = meta.get("document_id")
+            if doc_id:
+                doc_ids.add(doc_id)
+
+        return {"total_chunks": total_chunks, "total_files": len(doc_ids)}
+
+    def clear_all(self):
+        """Delete and recreate the Qdrant collection (removes all points)."""
+        self.client.delete_collection(self.collection_name)
+        self._ensure_collection()
+
 vector_service = VectorService()

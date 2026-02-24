@@ -1,14 +1,14 @@
 "use client";
 
-import { Message } from "@/types/chat";
+import { Message, ChatSession } from "@/types/chat";
 import { useState } from "react";
 import { useChatStore } from "./use-chat-store";
-import { apiStream } from "@/lib/api";
+import { apiStream, apiRequest } from "@/lib/api";
 
 export function useChatStream() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const { currentSessionId, selectedProvider, selectedModel } = useChatStore();
+  const { currentSessionId, selectedProvider, selectedModel, ragTopK, ragThreshold, updateSessionTitle } = useChatStore();
 
   const sendMessage = async (question: string) => {
     if (!question.trim() || !currentSessionId) return;
@@ -29,6 +29,8 @@ export function useChatStream() {
         session_id: currentSessionId,
         provider: selectedProvider,
         model: selectedModel,
+        top_k: String(ragTopK),
+        score_threshold: String(ragThreshold),
       });
 
       const reader = await apiStream(`/chat/ask-stream?${params.toString()}`);
@@ -82,6 +84,20 @@ export function useChatStream() {
       console.error("Stream Error", error);
     } finally {
       setIsTyping(false);
+      // Refresh session title — the backend generates it as a background task
+      // so we poll briefly after the stream to pick up the new title.
+      if (currentSessionId) {
+        const sessionId = currentSessionId;
+        setTimeout(async () => {
+          try {
+            const sessions = await apiRequest<ChatSession[]>("/chat/sessions");
+            const updated = sessions.find((s) => s.id === sessionId);
+            if (updated) updateSessionTitle(sessionId, updated.title);
+          } catch {
+            // Non-critical; ignore
+          }
+        }, 800);
+      }
     }
   };
 

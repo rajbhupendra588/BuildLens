@@ -14,15 +14,78 @@ class LLMService:
     # Public API
     # ------------------------------------------------------------------
 
-    async def generate_title(self, first_question: str, model: str = "minimax-m2:cloud") -> str:
-        """Generate a short session title from the first user message (Ollama)."""
+    async def generate_title(
+        self,
+        first_question: str,
+        provider: str = "ollama",
+        model: str = "",
+    ) -> str:
+        """Generate a short session title using the same provider the user is chatting with."""
         prompt = (
             "Generate a very short, concise title (max 5 words) for a chat session "
             f"based on this first message: '{first_question}'. "
             "Return only the title text without quotes or punctuation."
         )
-        title = await self.generate_answer(prompt, [], model=model)
-        return title.strip().strip('"')
+        try:
+            if provider == "ollama":
+                title = await self._title_ollama(prompt, model)
+            elif provider == "openai":
+                title = await self._title_openai(prompt, model)
+            elif provider == "gemini":
+                title = await self._title_gemini(prompt, model)
+            else:
+                # Unknown provider — fall back to truncation
+                return self._truncate_title(first_question)
+            return title.strip().strip('"') or self._truncate_title(first_question)
+        except Exception as exc:
+            import traceback
+            print(f"Title generation failed ({provider}/{model}): {type(exc).__name__}: {exc}")
+            print(traceback.format_exc())
+            return self._truncate_title(first_question)
+
+    def _truncate_title(self, text: str, max_len: int = 40) -> str:
+        text = text.strip()
+        return text[:max_len].rstrip() + "…" if len(text) > max_len else text
+
+    async def _title_ollama(self, prompt: str, model: str) -> str:
+        """Use streaming to generate title — cloud-routed Ollama models only support stream:True."""
+        collected = ""
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream(
+                "POST",
+                f"{self.ollama_base_url}/api/generate",
+                json={"model": model, "prompt": prompt, "stream": True,
+                      "options": {"num_ctx": 512, "temperature": 0}},
+            ) as resp:
+                if resp.status_code != 200:
+                    body = await resp.aread()
+                    raise RuntimeError(f"Ollama error {resp.status_code}: {body.decode()}")
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    collected += data.get("response", "")
+                    if data.get("done"):
+                        break
+        return collected
+
+    async def _title_openai(self, prompt: str, model: str) -> str:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=settings.LLM.OPENAI_API_KEY)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=20,
+            temperature=0,
+        )
+        return resp.choices[0].message.content or ""
+
+    async def _title_gemini(self, prompt: str, model: str) -> str:
+        import google.generativeai as genai
+        genai.configure(api_key=settings.LLM.GEMINI_API_KEY)
+        instance = genai.GenerativeModel(model_name=model)
+        response = await instance.generate_content_async(prompt)
+        return response.text or ""
 
     async def generate_answer(
         self,

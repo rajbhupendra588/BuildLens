@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Query, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
+from pydantic import BaseModel
+from typing import List, Optional
 import uuid
 import json
 
@@ -66,11 +68,17 @@ async def get_chat_history(
     message = chat_history_service.get_session_message(db, session_id)
     return message
 
-async def update_session_title_logic(db: Session, session_id: uuid.UUID, first_question: str):
+async def update_session_title_logic(
+    db: Session,
+    session_id: uuid.UUID,
+    first_question: str,
+    provider: str = "ollama",
+    model: str = "",
+):
     session = db.get(ChatSession, session_id)
 
-    if session and session.title == "New Conversation":
-        new_title = await llm_service.generate_title(first_question)
+    if session and session.title in ("New Chat", "New Conversation"):
+        new_title = await llm_service.generate_title(first_question, provider=provider, model=model)
         session.title = new_title
         db.add(session)
         db.commit()
@@ -79,10 +87,12 @@ async def update_session_title_logic(db: Session, session_id: uuid.UUID, first_q
 
 @router.get("/ask-stream")
 async def ask_question_stream(
-    question: str = Query(...), 
+    question: str = Query(...),
     session_id: uuid.UUID = Query(...),
     provider: str = Query("ollama"),
     model: str = Query("minimax-m2:cloud"),
+    top_k: int = Query(5),
+    score_threshold: float = Query(0.3),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_session)
 ):
@@ -90,9 +100,9 @@ async def ask_question_stream(
 
     history = chat_history_service.get_history(db, session_id, limit=10)
     if len(history) <= 1:
-        background_tasks.add_task(update_session_title_logic, db, session_id, question)
+        background_tasks.add_task(update_session_title_logic, db, session_id, question, provider, model)
 
-    context_chunks = await retrieval_service.search(question, limit=5)
+    context_chunks = await retrieval_service.search(question, limit=top_k, min_score=score_threshold)
 
     if not context_chunks:
         async def no_context_gen():
@@ -136,3 +146,78 @@ async def ask_question_stream(
         generate_with_history_tracking(),
         media_type="text/event-stream"
     )
+
+
+# ---------------------------------------------------------------------------
+# Export / Import
+# ---------------------------------------------------------------------------
+
+@router.get("/export")
+async def export_chat(db: Session = Depends(get_session)):
+    """Export all chat sessions and messages as JSON."""
+    sessions = db.exec(select(ChatSession)).all()
+    result = []
+    for session in sessions:
+        msgs = db.exec(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session.id)
+            .order_by(ChatMessage.created_at.asc())
+        ).all()
+        result.append({
+            "title": session.title,
+            "provider": session.provider,
+            "model_name": session.model_name,
+            "created_at": session.created_at.isoformat(),
+            "messages": [
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    "provider": m.provider,
+                    "model": m.model,
+                    "created_at": m.created_at.isoformat(),
+                }
+                for m in msgs
+            ],
+        })
+    return result
+
+
+class ImportMessagePayload(BaseModel):
+    role: str
+    content: str
+    provider: str = "ollama"
+    model: str = ""
+
+
+class ImportSessionPayload(BaseModel):
+    title: str = "Imported Conversation"
+    provider: str = "ollama"
+    model_name: str = ""
+    messages: List[ImportMessagePayload] = []
+
+
+@router.post("/import")
+async def import_chat(sessions: List[ImportSessionPayload], db: Session = Depends(get_session)):
+    """Import chat sessions and messages from a JSON export."""
+    for sess_data in sessions:
+        new_session = ChatSession(
+            title=sess_data.title,
+            provider=sess_data.provider,
+            model_name=sess_data.model_name,
+        )
+        db.add(new_session)
+        db.commit()
+        db.refresh(new_session)
+
+        for msg_data in sess_data.messages:
+            new_msg = ChatMessage(
+                session_id=new_session.id,
+                role=msg_data.role,
+                content=msg_data.content,
+                provider=msg_data.provider,
+                model=msg_data.model,
+            )
+            db.add(new_msg)
+        db.commit()
+
+    return {"message": f"Imported {len(sessions)} session(s)"}
