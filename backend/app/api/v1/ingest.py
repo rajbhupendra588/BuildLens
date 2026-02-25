@@ -6,32 +6,52 @@ from app.services.vector_service import vector_service
 
 router = APIRouter(prefix="/ingest", tags=["Ingestion"])
 
+
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
-    # Validate
     await file_service.validate_file(file)
 
-    extracted_raw = await file_service.process_file(file)
+    # file_service now returns (content, file_type)
+    raw_content, file_type = await file_service.process_file(file)
 
-    if file.filename.endswith('.csv'):
-        final_text = chunking_service.process_csv_to_sentences(extracted_raw)
-    elif file.filename.endswith(('.xlsx', '.json', '.txt', '.md', '.puml')):
-        final_text = extracted_raw.decode("utf-8") if isinstance(extracted_raw, bytes) else str(extracted_raw)
+    # Convert tabular / structured bytes into plain text
+    if file_type == "csv":
+        final_content = chunking_service.process_csv(raw_content)
+        file_type = "text"
+    elif file_type == "xlsx":
+        final_content = chunking_service.process_xlsx(raw_content)
+        file_type = "text"
+    elif file_type == "json":
+        final_content = chunking_service.process_json(raw_content)
+        file_type = "text"
+    elif file_type in {"text", "code"}:
+        # Decode bytes to string for text / source-code paths
+        final_content = (
+            raw_content.decode("utf-8", errors="ignore")
+            if isinstance(raw_content, bytes)
+            else str(raw_content)
+        )
     else:
-        final_text = extracted_raw
+        # "docling" — pass DoclingDocument directly
+        final_content = raw_content
 
-    # Stable ID for this upload — all chunks share the same document_id
     document_id = str(uuid.uuid4())
 
-    # Chunking
-    chunks = chunking_service.split_content(final_text, file.filename, document_id)
+    chunks = chunking_service.split_content(
+        final_content,
+        file.filename,
+        document_id,
+        file_type=file_type,
+    )
 
     vector_service.upsert_chunks(chunks)
+
     return {
         "document_id": document_id,
         "file_name": file.filename,
+        "file_type": file_type,
         "total_chunks": len(chunks),
-        "chunks_preview": chunks[:5],
+        "chunks_preview": chunks[:3],
         "status": "success",
-        "message": f"Successfully indexed {len(chunks)} chunks into Vector DB"
+        "message": f"Successfully indexed {len(chunks)} chunks into Vector DB",
     }

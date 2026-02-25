@@ -1,58 +1,118 @@
 import os
-import json
+import tempfile
 from pathlib import Path
 from docling.document_converter import DocumentConverter
 from fastapi import UploadFile, HTTPException
-import pandas as pd
 import uuid
+
+# Extensions that Docling handles (returns DoclingDocument)
+_DOCLING_EXTENSIONS = {".pdf", ".docx", ".pptx", ".png", ".jpg", ".jpeg"}
+
+# Extensions read directly as raw bytes (decoded later by chunking service)
+_TEXT_EXTENSIONS = {".txt", ".md", ".puml", ".json"}
+
+# Tabular formats (bytes, processed by pandas in chunking service)
+_TABULAR_EXTENSIONS = {".csv", ".xlsx"}
+
+# Source code — read as raw bytes, chunked with language-aware splitter
+_CODE_EXTENSIONS = {
+    ".py", ".pyw",
+    ".js", ".jsx", ".mjs", ".cjs",
+    ".ts", ".tsx",
+    ".java",
+    ".kt", ".kts",
+    ".go",
+    ".rs",
+    ".c", ".h",
+    ".cpp", ".cc", ".cxx", ".hpp", ".hxx",
+    ".rb",
+    ".php",
+    ".swift",
+    ".dart",
+    ".sh", ".bash", ".zsh",
+    ".sql",
+    ".yaml", ".yml",
+    ".toml",
+    ".xml",
+    ".html", ".htm",
+    ".css", ".scss", ".sass",
+    ".r",
+    ".scala",
+    ".lua",
+    ".tf",          # Terraform
+    ".dockerfile",  # Dockerfile (no extension variant)
+    ".env",
+    ".ini", ".cfg",
+}
+
+ALL_ALLOWED = _DOCLING_EXTENSIONS | _TEXT_EXTENSIONS | _TABULAR_EXTENSIONS | _CODE_EXTENSIONS
+
 
 class FileService:
     def __init__(self):
         self.converter = DocumentConverter()
-        self.max_file_size = 20 * 1024 * 1024 # 20MB
-        self.allowed_extensions = {
-            ".pdf", ".docx", ".pptx", ".png", ".jpg", ".jpeg", 
-            ".puml", ".txt", ".md", ".json", ".csv", ".xlsx"
-        }
+        self.max_file_size = 20 * 1024 * 1024  # 20 MB
 
     async def validate_file(self, file: UploadFile):
-        """Ensure file is within size limits and not empty."""
+        """Ensure file size and extension are acceptable."""
         size = file.size if file.size else 0
         if size > self.max_file_size:
-            raise HTTPException(status_code=403, detail="File too large (Max 20MB)")
+            raise HTTPException(status_code=403, detail="File too large (max 20 MB)")
 
-        # Validate extensions
         ext = Path(file.filename).suffix.lower()
-        if ext not in self.allowed_extensions:
-            raise HTTPException(status_code=415, detail=f"Extension {ext} not supported")
+        # Allow files named 'Dockerfile' (no extension)
+        if file.filename.lower() == "dockerfile":
+            return
+        if ext not in ALL_ALLOWED:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Extension '{ext}' is not supported. "
+                       f"Supported: documents, images, spreadsheets, and source code.",
+            )
 
-    
-    async def process_file(self, file: UploadFile) -> str:
-        """Convert uploaded file to Markdown text."""
+    async def process_file(self, file: UploadFile) -> tuple[bytes | object, str]:
+        """
+        Convert an uploaded file to either:
+          - raw bytes  (text / tabular / source-code paths)
+          - DoclingDocument (PDF, DOCX, PPTX, images)
+
+        Returns (content, file_type) where file_type is one of:
+          'docling' | 'csv' | 'xlsx' | 'json' | 'text' | 'code'
+        """
         ext = Path(file.filename).suffix.lower()
         content = await file.read()
 
-        # Stardardize .puml and text files (read directly)
-        if ext in {".csv", ".xlsx", ".json", ".txt", ".md", ".puml"}:
-            return content
+        # Tabular
+        if ext == ".csv":
+            return content, "csv"
+        if ext == ".xlsx":
+            return content, "xlsx"
 
-        # ASCII filename to avoid UnicodeEncodeError
-        safe_filename = f"temp_{uuid.uuid4()}{ext}"
-        temp_path = Path(safe_filename)
+        # JSON
+        if ext == ".json":
+            return content, "json"
 
+        # Plain text / markup / PUML
+        if ext in _TEXT_EXTENSIONS:
+            return content, "text"
+
+        # Source code
+        if ext in _CODE_EXTENSIONS or file.filename.lower() == "dockerfile":
+            return content, "code"
+
+        # Docling path (PDF, DOCX, PPTX, images)
+        safe_name = f"docrag_{uuid.uuid4()}{ext}"
+        temp_path = Path(tempfile.gettempdir()) / safe_name
         try:
-            with open(temp_path, "wb") as f:
-                f.write(content)
-
-            # Docling for PDF, DOCX, Images
+            temp_path.write_bytes(content)
             result = self.converter.convert(temp_path)
-            return result.document
-
+            return result.document, "docling"
         except Exception as e:
-            print(f"Error processing {file.filename}: {str(e)}")
-            # raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
+            print(f"Docling conversion error for {file.filename}: {e}")
+            raise HTTPException(status_code=500, detail=f"Document conversion failed: {e}")
         finally:
             if temp_path.exists():
                 os.remove(temp_path)
+
 
 file_service = FileService()

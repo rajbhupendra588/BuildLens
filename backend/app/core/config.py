@@ -37,8 +37,15 @@ class Settings(BaseSettings):
     APP_NAME: str = "DocRAG"
     ENVIRONMENT: Literal["development", "production", "test"] = "development"
 
-    # Embedding Model
-    EMBED_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Embedding model – nomic has 8 192-token context window and 768 dims.
+    # NOTE: if you already have data indexed with all-MiniLM-L6-v2 (384 dims)
+    # go to Settings → Storage and clear the vector DB before reindexing.
+    EMBED_MODEL: str = "nomic-ai/nomic-embed-text-v1.5"
+
+    # Tokenizer used only for chunk-size counting inside HybridChunker.
+    # Kept separate so the chunker doesn't need to download the full
+    # embedding model just to count tokens.
+    CHUNK_TOKENIZER: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # Nested Settings
     QDRANT: QdrantSettings = QdrantSettings()
