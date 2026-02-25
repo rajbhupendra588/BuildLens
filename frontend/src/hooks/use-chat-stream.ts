@@ -1,19 +1,36 @@
 "use client";
 
-import { Message, ChatSession } from "@/types/chat";
-import { useState } from "react";
+import { Message, ChatSession, SourceItem } from "@/types/chat";
+import { useRef, useState } from "react";
 import { useChatStore } from "./use-chat-store";
 import { apiStream, apiRequest } from "@/lib/api";
 
 export function useChatStream() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const { currentSessionId, selectedProvider, selectedModel, ragTopK, ragThreshold, updateSessionTitle } = useChatStore();
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const {
+    currentSessionId,
+    selectedProvider,
+    selectedModel,
+    ragTopK,
+    ragThreshold,
+    updateSessionTitle,
+  } = useChatStore();
+
+  const stopGeneration = () => {
+    abortControllerRef.current?.abort();
+  };
 
   const sendMessage = async (question: string) => {
     if (!question.trim() || !currentSessionId) return;
 
     setIsTyping(true);
+
+    // Create a fresh AbortController for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
@@ -22,6 +39,10 @@ export function useChatStream() {
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
+
+    const aiMsgId = crypto.randomUUID();
+    let accumulatedContent = "";
+    let sources: SourceItem[] = [];
 
     try {
       const params = new URLSearchParams({
@@ -33,13 +54,12 @@ export function useChatStream() {
         score_threshold: String(ragThreshold),
       });
 
-      const reader = await apiStream(`/chat/ask-stream?${params.toString()}`);
+      const reader = await apiStream(`/chat/ask-stream?${params.toString()}`, {
+        signal: controller.signal,
+      });
       const decoder = new TextDecoder();
 
-      const aiMsgId = crypto.randomUUID();
-      let accumulatedContent = "";
-
-      while (true) {
+      outer: while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
@@ -49,43 +69,82 @@ export function useChatStream() {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
 
-          const dataStr = line.replace("data: ", "").trim();
+          const dataStr = line.slice("data: ".length).trim();
+          if (!dataStr) continue;
+
           try {
             const data = JSON.parse(dataStr);
-            if (data.type === "done") break;
+
+            if (data.type === "done") break outer;
 
             if (data.type === "error") {
               console.error("LLM Error:", data.content);
-              break;
+              break outer;
+            }
+
+            if (data.type === "sources") {
+              sources = data.sources ?? [];
+              // Render the AI bubble immediately with empty content + sources
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: aiMsgId,
+                  role: "assistant" as const,
+                  content: "",
+                  sources,
+                  created_at: new Date().toISOString(),
+                },
+              ]);
             }
 
             if (data.type === "content") {
               accumulatedContent += data.text;
-
               setMessages((prev) => {
-                const otherMessages = prev.filter((m) => m.id !== aiMsgId);
+                const others = prev.filter((m) => m.id !== aiMsgId);
                 return [
-                  ...otherMessages,
+                  ...others,
                   {
                     id: aiMsgId,
                     role: "assistant" as const,
                     content: accumulatedContent,
+                    sources,
                     created_at: new Date().toISOString(),
                   },
                 ];
               });
             }
-          } catch (e) {
-            console.error("Parse Error", e);
+          } catch {
+            // malformed SSE line — skip
           }
         }
       }
-    } catch (error) {
-      console.error("Stream Error", error);
+    } catch (error: unknown) {
+      // AbortError is expected when stopGeneration() is called — not an error
+      if (error instanceof Error && error.name === "AbortError") {
+        // Mark the partial response as complete
+        if (accumulatedContent) {
+          setMessages((prev) => {
+            const others = prev.filter((m) => m.id !== aiMsgId);
+            return [
+              ...others,
+              {
+                id: aiMsgId,
+                role: "assistant" as const,
+                content: accumulatedContent,
+                sources,
+                created_at: new Date().toISOString(),
+              },
+            ];
+          });
+        }
+      } else {
+        console.error("Stream error:", error);
+      }
     } finally {
+      abortControllerRef.current = null;
       setIsTyping(false);
-      // Refresh session title — the backend generates it as a background task
-      // so we poll briefly after the stream to pick up the new title.
+
+      // Refresh session title after first exchange
       if (currentSessionId) {
         const sessionId = currentSessionId;
         setTimeout(async () => {
@@ -94,12 +153,12 @@ export function useChatStream() {
             const updated = sessions.find((s) => s.id === sessionId);
             if (updated) updateSessionTitle(sessionId, updated.title);
           } catch {
-            // Non-critical; ignore
+            // non-critical
           }
         }, 800);
       }
     }
   };
 
-  return { messages, setMessages, sendMessage, isTyping };
+  return { messages, setMessages, sendMessage, isTyping, stopGeneration };
 }

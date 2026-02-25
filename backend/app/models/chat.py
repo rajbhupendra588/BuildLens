@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, ForeignKey
+from sqlalchemy import Column, ForeignKey, JSON
 import sqlalchemy.dialects.postgresql as pg
 import uuid
 
@@ -29,6 +29,10 @@ class ChatMessage(SQLModel, table=True):
     content: str
     provider: str = Field(default="ollama")
     model: str = Field(default="")
+    # Retrieved source chunks stored as JSON (assistant messages only)
+    sources: Optional[List[Any]] = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     session: ChatSession = Relationship(back_populates="messages")

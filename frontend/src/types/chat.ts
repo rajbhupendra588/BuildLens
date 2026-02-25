@@ -1,7 +1,18 @@
+export interface SourceItem {
+  file_name: string;
+  score: number;
+  snippet: string;
+  page_number?: number | null;
+  section_title?: string | null;
+  language?: string | null;
+  element_type?: string | null;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
+  sources?: SourceItem[];
   provider?: string;
   model?: string;
   created_at: string;

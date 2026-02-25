@@ -1,4 +1,5 @@
 from sqlmodel import create_engine, SQLModel, Session
+from sqlalchemy import text
 from app.core.config import settings
 
 engine = create_engine(
@@ -7,8 +8,18 @@ engine = create_engine(
 )
 
 def init_db():
-    """Create all tables that define in Models"""
+    """Create all tables defined in Models, then apply incremental migrations."""
     SQLModel.metadata.create_all(engine)
+    _migrate()
+
+def _migrate():
+    """Idempotent schema additions for existing databases."""
+    with engine.connect() as conn:
+        # Add sources column if it was not present in the original schema
+        conn.execute(text(
+            "ALTER TABLE chatmessage ADD COLUMN IF NOT EXISTS sources JSON"
+        ))
+        conn.commit()
 
 def get_session():
     """Dependency for using FastAPI endpoints"""

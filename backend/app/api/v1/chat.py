@@ -65,8 +65,19 @@ async def get_chat_history(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    message = chat_history_service.get_session_message(db, session_id)
-    return message
+    messages = chat_history_service.get_session_message(db, session_id)
+    return [
+        {
+            "id": str(m.id),
+            "role": m.role,
+            "content": m.content,
+            "provider": m.provider,
+            "model": m.model,
+            "sources": m.sources or [],
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in messages
+    ]
 
 async def update_session_title_logic(
     db: Session,
@@ -104,12 +115,31 @@ async def ask_question_stream(
 
     context_chunks = await retrieval_service.search(question, limit=top_k, min_score=score_threshold)
 
+    # Build serialisable source cards from retrieved chunks
+    source_cards = [
+        {
+            "file_name": c["metadata"].get("file_name", "Unknown"),
+            "score": round(c["score"], 3),
+            "snippet": (c["content"] or "")[:200],
+            "page_number": c["metadata"].get("page_number"),
+            "section_title": c["metadata"].get("section_title"),
+            "language": c["metadata"].get("language"),
+            "element_type": c["metadata"].get("element_type"),
+        }
+        for c in context_chunks
+    ]
+
     if not context_chunks:
         async def no_context_gen():
-            yield "Sorry, I couldn't find any relevant information."
-        return StreamingResponse(no_context_gen(), media_type="text/plain")
+            yield f"data: {json.dumps({'type': 'sources', 'sources': []})}\n\n"
+            yield f"data: {json.dumps({'type': 'content', 'text': 'Sorry, I could not find any relevant information in the knowledge base.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return StreamingResponse(no_context_gen(), media_type="text/event-stream")
 
     async def generate_with_history_tracking():
+        # Emit sources as first event so the client can render cards immediately
+        yield f"data: {json.dumps({'type': 'sources', 'sources': source_cards})}\n\n"
+
         full_ai_response = ""
         async for chunk_raw in llm_service.generate_answer_stream(
             question, context_chunks, history, provider=provider, model=model
@@ -132,11 +162,13 @@ async def ask_question_stream(
             except Exception as e:
                 print(f"Error: {e} | Raw: {chunk_raw}")
                 continue
-        
+
         if full_ai_response:
             try:
-                print(f"DEBUG: Saving assistant response: {full_ai_response[:50]}...")
-                chat_history_service.add_message(db, session_id, "assistant", full_ai_response, provider, model)
+                chat_history_service.add_message(
+                    db, session_id, "assistant", full_ai_response, provider, model,
+                    sources=source_cards,
+                )
             except Exception as e:
                 print(f"Error saving assistant response: {e}")
         else:

@@ -22,7 +22,7 @@ export async function apiRequest<T>(
 
 export async function apiStream(
   path: string,
-  options?: RequestInit,
+  options?: RequestInit & { signal?: AbortSignal },
 ): Promise<ReadableStreamDefaultReader<Uint8Array>> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

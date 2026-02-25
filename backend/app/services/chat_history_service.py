@@ -1,3 +1,4 @@
+from typing import Any, List, Optional
 from sqlmodel import Session, select
 from app.models.chat import ChatSession, ChatMessage
 import uuid
@@ -9,9 +10,25 @@ class ChatHistoryService:
         db.commit()
         db.refresh(session)
         return session
-    
-    def add_message(self, db: Session, session_id: uuid.UUID, role: str, content: str, provider: str, model: str):
-        message = ChatMessage(session_id=session_id, role=role, content=content, provider=provider, model=model)
+
+    def add_message(
+        self,
+        db: Session,
+        session_id: uuid.UUID,
+        role: str,
+        content: str,
+        provider: str,
+        model: str,
+        sources: Optional[List[Any]] = None,
+    ):
+        message = ChatMessage(
+            session_id=session_id,
+            role=role,
+            content=content,
+            provider=provider,
+            model=model,
+            sources=sources,
+        )
         db.add(message)
         db.commit()
         return message

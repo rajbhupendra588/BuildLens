@@ -2,42 +2,72 @@
 
 import { useChatStore } from "@/hooks/use-chat-store";
 import { useChatStream } from "@/hooks/use-chat-stream";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollArea } from "../ui/scroll-area";
 import { ChatMessageItem } from "./chat-message-item";
-import { Loader2, SendHorizontal } from "lucide-react";
+import { Loader2, SendHorizontal, Square, ChevronDown } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { apiRequest } from "@/lib/api";
 import { Message } from "@/types/chat";
 import { Skeleton } from "../ui/skeleton";
 import { ModelSelector } from "./model-selector";
+import { cn } from "@/lib/utils";
 
 export function ChatInterface() {
   const { currentSessionId } = useChatStore();
-  const { messages, setMessages, sendMessage, isTyping } = useChatStream();
+  const { messages, setMessages, sendMessage, isTyping, stopGeneration } =
+    useChatStream();
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [input, setInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
-  // Auto-scroll to bottom when messages update
-  useEffect(() => {
-    if (scrollRef.current) {
-      const scrollContainer = scrollRef.current.querySelector(
+  // Refs for scroll management
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  // True while the user has manually scrolled up during streaming
+  const userScrolledRef = useRef(false);
+
+  // ── Scroll helpers ──────────────────────────────────────────────────────────
+
+  const getViewport = useCallback((): HTMLElement | null => {
+    return (
+      viewportRef.current?.querySelector(
         "[data-radix-scroll-area-viewport]",
-      );
-      if (scrollContainer) {
-        scrollContainer.scrollTo({
-          top: scrollContainer.scrollHeight,
-          behavior: "smooth",
-        });
-      }
-    }
-  }, [messages]);
+      ) ?? null
+    );
+  }, []);
 
-  // Load chat history when session changes
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+  }, []);
+
+  // Track user scroll position to decide whether to auto-scroll
   useEffect(() => {
-    // Clear stale messages immediately so we don't flash old content
+    const vp = getViewport();
+    if (!vp) return;
+
+    const handleScroll = () => {
+      const distFromBottom = vp.scrollHeight - vp.scrollTop - vp.clientHeight;
+      const atBottom = distFromBottom < 80;
+      userScrolledRef.current = !atBottom;
+      setShowScrollBtn(!atBottom);
+    };
+
+    vp.addEventListener("scroll", handleScroll, { passive: true });
+    return () => vp.removeEventListener("scroll", handleScroll);
+  }, [getViewport]);
+
+  // Auto-scroll when messages update, unless user scrolled up
+  useEffect(() => {
+    if (!userScrolledRef.current) {
+      scrollToBottom("smooth");
+    }
+  }, [messages, scrollToBottom]);
+
+  // ── History loading ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
     setMessages([]);
 
     async function loadHistory() {
@@ -53,17 +83,26 @@ export function ChatInterface() {
         setMessages([]);
       } finally {
         setIsHistoryLoading(false);
+        // Jump to bottom instantly after loading history
+        requestAnimationFrame(() => scrollToBottom("instant"));
       }
     }
     loadHistory();
-  }, [currentSessionId, setMessages]);
+  }, [currentSessionId, setMessages, scrollToBottom]);
+
+  // ── Send / stop ─────────────────────────────────────────────────────────────
 
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
-    const msg = input;
+    const msg = input.trim();
     setInput("");
+    // Always scroll to bottom when user sends
+    userScrolledRef.current = false;
+    setShowScrollBtn(false);
     await sendMessage(msg);
   };
+
+  // ── Empty state ─────────────────────────────────────────────────────────────
 
   if (!currentSessionId) {
     return (
@@ -74,9 +113,9 @@ export function ChatInterface() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Message Area — min-h-0 prevents flex children from overflowing */}
-      <ScrollArea ref={scrollRef} className="flex-1 min-h-0 pr-4">
+    <div className="flex flex-col flex-1 min-h-0 relative">
+      {/* ── Message area ── */}
+      <ScrollArea ref={viewportRef} className="flex-1 min-h-0 pr-4">
         <div className="flex flex-col py-4">
           {isHistoryLoading ? (
             <div className="p-8 space-y-4">
@@ -88,45 +127,86 @@ export function ChatInterface() {
               <ChatMessageItem key={msg.id} message={msg} />
             ))
           )}
+
+          {/* Thinking indicator — shown only while waiting for first content chunk */}
           {isTyping &&
-            messages.length > 0 &&
-            messages[messages.length - 1].role !== "assistant" && (
-              <div className="p-4 flex items-center gap-2 text-sm text-muted-foreground">
+            (messages.length === 0 ||
+              messages[messages.length - 1].role !== "assistant" ||
+              messages[messages.length - 1].content === "") && (
+              <div className="px-4 py-3 flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
-                AI is thinking...
+                Thinking…
               </div>
             )}
+
+          {/* Scroll anchor */}
+          <div ref={bottomRef} className="h-1" />
         </div>
       </ScrollArea>
 
-      {/* Input Area */}
+      {/* ── Scroll-to-bottom floating button ── */}
+      {showScrollBtn && (
+        <button
+          onClick={() => {
+            userScrolledRef.current = false;
+            setShowScrollBtn(false);
+            scrollToBottom("smooth");
+          }}
+          className={cn(
+            "absolute bottom-[88px] left-1/2 -translate-x-1/2 z-10",
+            "flex items-center gap-1.5 rounded-full border bg-background px-3 py-1.5",
+            "text-xs text-muted-foreground shadow-md",
+            "hover:bg-muted transition-colors",
+          )}
+        >
+          <ChevronDown className="size-3.5" />
+          Scroll to bottom
+        </button>
+      )}
+
+      {/* ── Input area ── */}
       <div className="border-t bg-background p-4 shrink-0">
-        {/* Model selector row */}
         <div className="flex justify-center mb-2 max-w-3xl mx-auto">
           <ModelSelector />
         </div>
 
-        {/* Input + send row */}
         <div className="flex items-center gap-2 max-w-3xl mx-auto">
           <Input
-            placeholder="Ask anything about your documents..."
+            placeholder="Ask anything about your documents…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             disabled={isTyping}
             className="flex-1"
           />
-          <Button
-            size="icon"
-            onClick={handleSend}
-            disabled={isTyping || !input.trim()}
-          >
-            {isTyping ? (
-              <Loader2 className="animate-spin" />
-            ) : (
+
+          {isTyping ? (
+            /* Stop generation button */
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={stopGeneration}
+              title="Stop generation"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <Square className="size-4 fill-current" />
+            </Button>
+          ) : (
+            /* Send button */
+            <Button
+              size="icon"
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="shrink-0"
+            >
               <SendHorizontal className="size-5" />
-            )}
-          </Button>
+            </Button>
+          )}
         </div>
 
         <p className="text-[10px] text-center text-muted-foreground mt-2">
