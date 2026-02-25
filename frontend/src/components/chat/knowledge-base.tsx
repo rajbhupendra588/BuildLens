@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest, apiUploadWithProgress } from "@/lib/api";
 import {
   Table,
@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
   Image,
   File,
+  FolderOpen,
   Trash2,
   RefreshCw,
   Database,
@@ -136,6 +137,58 @@ function FileIcon({ name, className }: { name: string; className?: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Directory traversal helpers (File and Directory Entries API)
+// ---------------------------------------------------------------------------
+
+/** Read all entries from a directory reader, looping because readEntries() returns ≤100 per call. */
+async function readAllDirEntries(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> {
+  const all: FileSystemEntry[] = [];
+  while (true) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+      reader.readEntries(resolve, reject),
+    );
+    if (batch.length === 0) break;
+    all.push(...batch);
+  }
+  return all;
+}
+
+/** Recursively collect File objects from a FileSystemEntry (file or directory). */
+async function collectFilesFromEntry(entry: FileSystemEntry): Promise<File[]> {
+  // Skip hidden files / directories (e.g. .DS_Store, .git)
+  if (entry.name.startsWith(".")) return [];
+
+  if (entry.isFile) {
+    return new Promise((resolve) =>
+      (entry as FileSystemFileEntry).file(
+        (f) => resolve([f]),
+        () => resolve([]),
+      ),
+    );
+  }
+
+  if (entry.isDirectory) {
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    const entries = await readAllDirEntries(reader);
+    const nested = await Promise.all(entries.map(collectFilesFromEntry));
+    return nested.flat();
+  }
+
+  return [];
+}
+
+/** Collect all files from a DataTransfer, handling directories recursively. */
+async function collectFilesFromDataTransfer(items: DataTransferItemList): Promise<File[]> {
+  const entries: FileSystemEntry[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i].webkitGetAsEntry();
+    if (entry) entries.push(entry);
+  }
+  const arrays = await Promise.all(entries.map(collectFilesFromEntry));
+  return arrays.flat();
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -146,11 +199,19 @@ export function KnowledgeBase() {
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dirInputRef = useRef<HTMLInputElement>(null);
   const isQueueRunning = useRef(false);
   // Mirror of uploadQueue kept in sync for reading inside async loops
   const queueRef = useRef<UploadItem[]>([]);
+  // Tracks which items a worker has already claimed to prevent double-processing
+  const claimedIds = useRef<Set<string>>(new Set());
   // Prevents onClick from opening the file picker right after a drop
   const justDroppedRef = useRef(false);
+
+  // webkitdirectory is not a standard React prop — set it imperatively
+  useEffect(() => {
+    dirInputRef.current?.setAttribute("webkitdirectory", "");
+  }, []);
 
   const isQueueActive = uploadQueue.length > 0;
 
@@ -176,38 +237,67 @@ export function KnowledgeBase() {
   };
 
   /**
-   * Sequential upload loop.
-   * Uses queueRef so it always sees newly-added pending items even if they
-   * were appended after this call started.
+   * Upload a single item, updating its status as the request progresses.
+   * Called concurrently by multiple workers.
    */
+  const uploadOne = async (item: UploadItem) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", item.file);
+
+      await apiUploadWithProgress("/ingest/upload", formData, (percent) => {
+        updateItem(item.id, { progress: percent });
+        if (percent === 100) updateItem(item.id, { status: "processing" });
+      });
+
+      updateItem(item.id, { status: "done", progress: 100 });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      updateItem(item.id, { status: "error", error: msg });
+    }
+  };
+
+  /**
+   * One worker in the pool: keeps claiming and uploading pending items until
+   * none are left. JS is single-threaded so the claim (find + Set.add) is
+   * atomic — two workers can never claim the same item.
+   */
+  const runWorker = async () => {
+    while (true) {
+      const item = queueRef.current.find(
+        (i) => i.status === "pending" && !claimedIds.current.has(i.id),
+      );
+      if (!item) break;
+
+      claimedIds.current.add(item.id);
+      updateItem(item.id, { status: "uploading", progress: 0 });
+      await uploadOne(item);
+    }
+  };
+
+  /**
+   * Bounded-concurrency upload manager.
+   * Spawns UPLOAD_CONCURRENCY workers in parallel — fast enough to saturate
+   * the network, conservative enough that the backend never processes more
+   * than UPLOAD_CONCURRENCY files simultaneously, keeping peak memory low.
+   * The outer loop catches items added while workers were running.
+   */
+  const UPLOAD_CONCURRENCY = 3;
+
   const runQueue = async () => {
     if (isQueueRunning.current) return;
     isQueueRunning.current = true;
 
-    // Process items until no pending ones remain.
-    // New files enqueued during processing are picked up on the next iteration.
-    while (true) {
-      const item = queueRef.current.find((i) => i.status === "pending");
-      if (!item) break;
-
-      updateItem(item.id, { status: "uploading", progress: 0 });
-
-      try {
-        const formData = new FormData();
-        formData.append("file", item.file);
-
-        await apiUploadWithProgress("/ingest/upload", formData, (percent) => {
-          updateItem(item.id, { progress: percent });
-          if (percent === 100) {
-            updateItem(item.id, { status: "processing" });
-          }
-        });
-
-        updateItem(item.id, { status: "done", progress: 100 });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        updateItem(item.id, { status: "error", error: msg });
-      }
+    // Re-run workers until no unclaimed pending items remain.
+    // This handles files dropped/added while a previous batch was in flight.
+    while (
+      queueRef.current.some(
+        (i) => i.status === "pending" && !claimedIds.current.has(i.id),
+      )
+    ) {
+      await Promise.all(
+        Array.from({ length: UPLOAD_CONCURRENCY }, () => runWorker()),
+      );
     }
 
     const doneCount = queueRef.current.filter((i) => i.status === "done").length;
@@ -220,6 +310,7 @@ export function KnowledgeBase() {
     }
 
     setTimeout(() => {
+      claimedIds.current.clear();
       queueRef.current = [];
       setUploadQueue([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -265,6 +356,13 @@ export function KnowledgeBase() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length > 0) enqueueFiles(files);
+    e.target.value = "";
+  };
+
+  const handleDirInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) enqueueFiles(files);
+    e.target.value = "";
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -277,13 +375,14 @@ export function KnowledgeBase() {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     // Some browsers fire a click event after a drop; suppress it.
     justDroppedRef.current = true;
     setTimeout(() => { justDroppedRef.current = false; }, 200);
-    const files = Array.from(e.dataTransfer.files);
+    // Use the Entries API so dropped directories are traversed recursively.
+    const files = await collectFilesFromDataTransfer(e.dataTransfer.items);
     if (files.length > 0) enqueueFiles(files);
   };
 
@@ -363,6 +462,14 @@ export function KnowledgeBase() {
               onChange={handleInputChange}
               accept={ACCEPTED_EXTENSIONS}
             />
+            {/* Directory picker — webkitdirectory is set imperatively in useEffect */}
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              ref={dirInputRef}
+              onChange={handleDirInputChange}
+            />
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -381,7 +488,7 @@ export function KnowledgeBase() {
                   <p className="text-xs font-medium text-muted-foreground mb-3">
                     Uploading {doneCount} / {totalCount} files
                   </p>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
                     {uploadQueue.map((item) => (
                       <div key={item.id} className="flex items-center gap-3">
                         <FileIcon name={item.file.name} className="shrink-0" />
@@ -445,7 +552,7 @@ export function KnowledgeBase() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground mt-3">
-                    Click or drop more files to add to queue
+                    Click or drop more files / folders to add to queue
                   </p>
                 </div>
               ) : (
@@ -458,12 +565,42 @@ export function KnowledgeBase() {
                     )}
                   />
                   <p className="text-sm font-medium">
-                    {isDragging ? "Drop to upload" : "Click or drag files here"}
+                    {isDragging
+                      ? "Drop files or folders here"
+                      : "Drag files or folders here"}
                   </p>
                   <p className="text-xs text-muted-foreground text-center">
-                    PDF, DOCX, images, code, spreadsheets… · max 20 MB each ·
-                    multiple files supported
+                    PDF, DOCX, images, code, spreadsheets… · max 20 MB per file ·
+                    sub-folders included
                   </p>
+                  {!isDragging && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRef.current?.click();
+                        }}
+                      >
+                        Choose Files
+                      </Button>
+                      <span className="text-xs text-muted-foreground">or</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dirInputRef.current?.click();
+                        }}
+                      >
+                        <FolderOpen className="size-3 mr-1" />
+                        Choose Folder
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
