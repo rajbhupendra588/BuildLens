@@ -23,6 +23,51 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 // ---------------------------------------------------------------------------
+// ModeBadge — color-coded intent pill rendered below the AI avatar
+// ---------------------------------------------------------------------------
+
+const MODE_COLORS: Record<string, string> = {
+  GENERAL:
+    "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+  DOCUMENT_ANALYST:
+    "bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800",
+  CODE_ARCHITECT:
+    "bg-violet-50 text-violet-600 border-violet-200 dark:bg-violet-950/40 dark:text-violet-400 dark:border-violet-800",
+  CODE_DEBUGGER:
+    "bg-red-50 text-red-600 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800",
+  SUMMARIZER:
+    "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800",
+  DATA_ANALYST:
+    "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800",
+  CREATIVE:
+    "bg-pink-50 text-pink-600 border-pink-200 dark:bg-pink-950/40 dark:text-pink-400 dark:border-pink-800",
+};
+
+function ModeBadge({
+  mode,
+  label,
+  icon,
+}: {
+  mode: string;
+  label: string;
+  icon: string;
+}) {
+  const colorClass = MODE_COLORS[mode] ?? MODE_COLORS.GENERAL;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none",
+        colorClass,
+      )}
+      title={label}
+    >
+      <span aria-hidden="true">{icon}</span>
+      {label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // CodeBlock
 // ---------------------------------------------------------------------------
 function CodeBlock({ language, code }: { language: string; code: string }) {
@@ -108,25 +153,60 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 function getFileIcon(fileName: string) {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
   const codeExts = new Set([
-    "py","pyw","js","jsx","mjs","ts","tsx","java","kt","go","rs",
-    "c","h","cpp","rb","php","swift","dart","sh","sql","r","scala",
-    "html","htm","css","scss","yaml","yml","toml","xml","lua","tf",
+    "py",
+    "pyw",
+    "js",
+    "jsx",
+    "mjs",
+    "ts",
+    "tsx",
+    "java",
+    "kt",
+    "go",
+    "rs",
+    "c",
+    "h",
+    "cpp",
+    "rb",
+    "php",
+    "swift",
+    "dart",
+    "sh",
+    "sql",
+    "r",
+    "scala",
+    "html",
+    "htm",
+    "css",
+    "scss",
+    "yaml",
+    "yml",
+    "toml",
+    "xml",
+    "lua",
+    "tf",
   ]);
-  const sheetExts = new Set(["csv","xlsx","xls"]);
-  const imageExts = new Set(["png","jpg","jpeg","gif","webp","svg"]);
+  const sheetExts = new Set(["csv", "xlsx", "xls"]);
+  const imageExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg"]);
 
-  if (imageExts.has(ext)) return <Image className="size-3.5 text-emerald-500 shrink-0" />;
-  if (sheetExts.has(ext)) return <FileSpreadsheet className="size-3.5 text-green-600 shrink-0" />;
-  if (codeExts.has(ext)) return <FileCode className="size-3.5 text-violet-500 shrink-0" />;
-  if (ext === "pdf") return <FileText className="size-3.5 text-red-500 shrink-0" />;
-  if (["doc","docx","pptx","txt","md"].includes(ext))
+  if (imageExts.has(ext))
+    return <Image className="size-3.5 text-emerald-500 shrink-0" />;
+  if (sheetExts.has(ext))
+    return <FileSpreadsheet className="size-3.5 text-green-600 shrink-0" />;
+  if (codeExts.has(ext))
+    return <FileCode className="size-3.5 text-violet-500 shrink-0" />;
+  if (ext === "pdf")
+    return <FileText className="size-3.5 text-red-500 shrink-0" />;
+  if (["doc", "docx", "pptx", "txt", "md"].includes(ext))
     return <FileText className="size-3.5 text-blue-500 shrink-0" />;
   return <File className="size-3.5 text-muted-foreground shrink-0" />;
 }
 
 function scoreColor(score: number) {
-  if (score >= 0.75) return "text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-800";
-  if (score >= 0.5) return "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/40 dark:border-amber-800";
+  if (score >= 0.75)
+    return "text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-800";
+  if (score >= 0.5)
+    return "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/40 dark:border-amber-800";
   return "text-muted-foreground bg-muted border-border";
 }
 
@@ -213,9 +293,7 @@ function SourceCards({ sources }: { sources: SourceItem[] }) {
     <div className="mt-4 pt-3 border-t border-border/60">
       <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground font-medium">
         <BookOpen className="size-3.5" />
-        {sources.length === 1
-          ? "1 source"
-          : `${sources.length} sources`}
+        {sources.length === 1 ? "1 source" : `${sources.length} sources`}
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
@@ -268,9 +346,18 @@ export function ChatMessageItem({ message }: { message: Message }) {
   // AI message
   return (
     <div className="flex w-full gap-3 px-4 py-4">
-      {/* Avatar */}
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary mt-0.5">
-        <Sparkles className="size-3.5" />
+      {/* Avatar + mode badge stacked */}
+      <div className="flex flex-col items-center gap-1.5 shrink-0 mt-0.5">
+        <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Sparkles className="size-3.5" />
+        </div>
+        {/* {message.detectedMode && message.modeLabel && message.modeIcon && (
+          <ModeBadge
+            mode={message.detectedMode}
+            label={message.modeLabel}
+            icon={message.modeIcon}
+          />
+        )} */}
       </div>
 
       {/* Content */}

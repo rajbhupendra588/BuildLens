@@ -43,6 +43,9 @@ export function useChatStream() {
     const aiMsgId = crypto.randomUUID();
     let accumulatedContent = "";
     let sources: SourceItem[] = [];
+    let detectedMode: string | undefined;
+    let modeLabel: string | undefined;
+    let modeIcon: string | undefined;
 
     try {
       const params = new URLSearchParams({
@@ -97,6 +100,29 @@ export function useChatStream() {
               ]);
             }
 
+            if (data.type === "intent") {
+              detectedMode = data.mode;
+              modeLabel = data.label;
+              modeIcon = data.icon;
+              // Update the AI bubble with mode badge fields
+              setMessages((prev) => {
+                const others = prev.filter((m) => m.id !== aiMsgId);
+                return [
+                  ...others,
+                  {
+                    id: aiMsgId,
+                    role: "assistant" as const,
+                    content: accumulatedContent,
+                    sources,
+                    detectedMode,
+                    modeLabel,
+                    modeIcon,
+                    created_at: new Date().toISOString(),
+                  },
+                ];
+              });
+            }
+
             if (data.type === "content") {
               accumulatedContent += data.text;
               setMessages((prev) => {
@@ -108,6 +134,9 @@ export function useChatStream() {
                     role: "assistant" as const,
                     content: accumulatedContent,
                     sources,
+                    detectedMode,
+                    modeLabel,
+                    modeIcon,
                     created_at: new Date().toISOString(),
                   },
                 ];
@@ -132,6 +161,9 @@ export function useChatStream() {
                 role: "assistant" as const,
                 content: accumulatedContent,
                 sources,
+                detectedMode,
+                modeLabel,
+                modeIcon,
                 created_at: new Date().toISOString(),
               },
             ];

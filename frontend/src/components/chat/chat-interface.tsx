@@ -9,7 +9,7 @@ import { Loader2, SendHorizontal, Square, ChevronDown } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { apiRequest } from "@/lib/api";
-import { Message } from "@/types/chat";
+import { Message, MODE_LABELS, MODE_ICONS } from "@/types/chat";
 import { Skeleton } from "../ui/skeleton";
 import { ModelSelector } from "./model-selector";
 import { cn } from "@/lib/utils";
@@ -74,9 +74,16 @@ export function ChatInterface() {
       if (!currentSessionId) return;
       setIsHistoryLoading(true);
       try {
-        const history = await apiRequest<Message[]>(
+        const rawHistory = await apiRequest<(Message & { detected_mode?: string })[]>(
           `/chat/history/${currentSessionId}`,
         );
+        // Map snake_case API field to camelCase + look up label/icon
+        const history: Message[] = rawHistory.map((m) => ({
+          ...m,
+          detectedMode: m.detected_mode ?? undefined,
+          modeLabel: m.detected_mode ? MODE_LABELS[m.detected_mode] : undefined,
+          modeIcon: m.detected_mode ? MODE_ICONS[m.detected_mode] : undefined,
+        }));
         setMessages(history);
       } catch (error) {
         console.error("Failed to load history", error);

@@ -19,6 +19,10 @@ def _migrate():
         conn.execute(text(
             "ALTER TABLE chatmessage ADD COLUMN IF NOT EXISTS sources JSON"
         ))
+        # Add detected_mode column for intent-based prompting
+        conn.execute(text(
+            "ALTER TABLE chatmessage ADD COLUMN IF NOT EXISTS detected_mode VARCHAR(50)"
+        ))
         conn.commit()
 
 def get_session():

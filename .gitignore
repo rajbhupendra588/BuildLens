@@ -1,6 +1,7 @@
 qdrant_data/
 postgres_data/
 .claude/
+.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

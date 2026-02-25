@@ -1,9 +1,11 @@
 import json
 import httpx
-from typing import List, Dict, Any, AsyncGenerator
+from typing import List, Dict, Any, AsyncGenerator, Optional
 
 from app.core.config import settings
 from app.services.retrieval_service import retrieval_service
+from app.services.intent_service import IntentResult
+from app.services.prompt_service import prompt_composer
 
 
 class LLMService:
@@ -128,9 +130,10 @@ class LLMService:
         history: List[Any],
         provider: str,
         model: str,
+        intent: Optional[IntentResult] = None,
     ) -> AsyncGenerator[str, None]:
         """Route streaming generation to the correct provider."""
-        system_prompt = self._prepare_system_prompt(context_chunks, history)
+        system_prompt = self._prepare_system_prompt(context_chunks, history, intent)
 
         if provider == "ollama":
             async for chunk in self._stream_ollama(model, query, system_prompt):
@@ -241,9 +244,17 @@ class LLMService:
     # ------------------------------------------------------------------
 
     def _prepare_system_prompt(
-        self, context_chunks: List[Dict[str, Any]], history: List[Any]
+        self,
+        context_chunks: List[Dict[str, Any]],
+        history: List[Any],
+        intent: Optional[IntentResult] = None,
     ) -> str:
         context_text = retrieval_service.format_context_for_llm(context_chunks)
+
+        if intent is not None:
+            return prompt_composer.compose(intent, context_chunks, history, context_text)
+
+        # Legacy fallback (title generation, non-intent paths)
         history_text = (
             "\n".join([f"{m.role}: {m.content}" for m in history]) if history else ""
         )

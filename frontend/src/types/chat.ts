@@ -15,8 +15,31 @@ export interface Message {
   sources?: SourceItem[];
   provider?: string;
   model?: string;
+  detectedMode?: string;
+  modeLabel?: string;
+  modeIcon?: string;
   created_at: string;
 }
+
+export const MODE_LABELS: Record<string, string> = {
+  GENERAL: "General Assistant",
+  DOCUMENT_ANALYST: "Document Analyst",
+  CODE_ARCHITECT: "Code Architect",
+  CODE_DEBUGGER: "Code Debugger",
+  SUMMARIZER: "Summarizer",
+  DATA_ANALYST: "Data Analyst",
+  CREATIVE: "Creative Synthesizer",
+};
+
+export const MODE_ICONS: Record<string, string> = {
+  GENERAL: "✨",
+  DOCUMENT_ANALYST: "📄",
+  CODE_ARCHITECT: "💻",
+  CODE_DEBUGGER: "🐛",
+  SUMMARIZER: "📋",
+  DATA_ANALYST: "📊",
+  CREATIVE: "💡",
+};
 
 export interface ChatSession {
   id: string;

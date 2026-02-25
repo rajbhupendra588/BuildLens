@@ -33,6 +33,8 @@ class ChatMessage(SQLModel, table=True):
     sources: Optional[List[Any]] = Field(
         default=None, sa_column=Column(JSON, nullable=True)
     )
+    # Detected intent mode for this message (assistant messages only)
+    detected_mode: Optional[str] = Field(default=None, max_length=50)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     session: ChatSession = Relationship(back_populates="messages")

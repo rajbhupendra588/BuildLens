@@ -11,6 +11,7 @@ from app.models.chat import ChatSession, ChatMessage
 from app.services.retrieval_service import retrieval_service
 from app.services.llm_service import llm_service
 from app.services.chat_history_service import chat_history_service
+from app.services.intent_service import intent_classifier
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -74,6 +75,7 @@ async def get_chat_history(
             "provider": m.provider,
             "model": m.model,
             "sources": m.sources or [],
+            "detected_mode": m.detected_mode,
             "created_at": m.created_at.isoformat(),
         }
         for m in messages
@@ -129,20 +131,21 @@ async def ask_question_stream(
         for c in context_chunks
     ]
 
-    if not context_chunks:
-        async def no_context_gen():
-            yield f"data: {json.dumps({'type': 'sources', 'sources': []})}\n\n"
-            yield f"data: {json.dumps({'type': 'content', 'text': 'Sorry, I could not find any relevant information in the knowledge base.'})}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-        return StreamingResponse(no_context_gen(), media_type="text/event-stream")
+    # Classify intent using source metadata signals + query patterns (zero I/O)
+    source_metadata = [c["metadata"] for c in context_chunks]
+    intent = intent_classifier.classify(question, source_metadata)
 
     async def generate_with_history_tracking():
         # Emit sources as first event so the client can render cards immediately
         yield f"data: {json.dumps({'type': 'sources', 'sources': source_cards})}\n\n"
 
+        # Emit intent event — consumed by frontend to render mode badge
+        yield f"data: {json.dumps({'type': 'intent', 'mode': intent.mode.value, 'label': intent.label, 'icon': intent.icon})}\n\n"
+
         full_ai_response = ""
         async for chunk_raw in llm_service.generate_answer_stream(
-            question, context_chunks, history, provider=provider, model=model
+            question, context_chunks, history, provider=provider, model=model,
+            intent=intent,
         ):
             yield chunk_raw
 
@@ -168,6 +171,7 @@ async def ask_question_stream(
                 chat_history_service.add_message(
                     db, session_id, "assistant", full_ai_response, provider, model,
                     sources=source_cards,
+                    detected_mode=intent.mode.value,
                 )
             except Exception as e:
                 print(f"Error saving assistant response: {e}")
