@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { apiRequest, apiUpload } from "@/lib/api";
+import { useRef, useState } from "react";
+import { apiRequest, apiUploadWithProgress } from "@/lib/api";
 import {
   Table,
   TableBody,
@@ -23,11 +23,12 @@ import {
   Database,
   Loader2,
   UploadCloud,
+  Check,
+  X,
 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
@@ -51,6 +52,14 @@ import { toast } from "sonner";
 interface Document {
   document_id: string;
   file_name: string;
+}
+
+interface UploadItem {
+  id: string;
+  file: File;
+  status: "pending" | "uploading" | "processing" | "done" | "error";
+  progress: number;
+  error?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,10 +142,17 @@ function FileIcon({ name, className }: { name: string; className?: string }) {
 export function KnowledgeBase() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isQueueRunning = useRef(false);
+  // Mirror of uploadQueue kept in sync for reading inside async loops
+  const queueRef = useRef<UploadItem[]>([]);
+  // Prevents onClick from opening the file picker right after a drop
+  const justDroppedRef = useRef(false);
+
+  const isQueueActive = uploadQueue.length > 0;
 
   const fetchDocs = async () => {
     setIsLoading(true);
@@ -150,43 +166,107 @@ export function KnowledgeBase() {
     }
   };
 
-  const uploadFile = async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error(`File too large — max 20 MB (got ${(file.size / 1024 / 1024).toFixed(1)} MB)`);
-      return;
+  /** Update one item — mutates the ref synchronously then triggers a re-render. */
+  const updateItem = (id: string, patch: Partial<UploadItem>) => {
+    const next = queueRef.current.map((item) =>
+      item.id === id ? { ...item, ...patch } : item,
+    );
+    queueRef.current = next;
+    setUploadQueue(next);
+  };
+
+  /**
+   * Sequential upload loop.
+   * Uses queueRef so it always sees newly-added pending items even if they
+   * were appended after this call started.
+   */
+  const runQueue = async () => {
+    if (isQueueRunning.current) return;
+    isQueueRunning.current = true;
+
+    // Process items until no pending ones remain.
+    // New files enqueued during processing are picked up on the next iteration.
+    while (true) {
+      const item = queueRef.current.find((i) => i.status === "pending");
+      if (!item) break;
+
+      updateItem(item.id, { status: "uploading", progress: 0 });
+
+      try {
+        const formData = new FormData();
+        formData.append("file", item.file);
+
+        await apiUploadWithProgress("/ingest/upload", formData, (percent) => {
+          updateItem(item.id, { progress: percent });
+          if (percent === 100) {
+            updateItem(item.id, { status: "processing" });
+          }
+        });
+
+        updateItem(item.id, { status: "done", progress: 100 });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        updateItem(item.id, { status: "error", error: msg });
+      }
     }
 
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
+    const doneCount = queueRef.current.filter((i) => i.status === "done").length;
+    await fetchDocs();
 
-    const promise = apiUpload("/ingest/upload", formData);
+    if (doneCount > 0) {
+      toast.success(
+        `${doneCount} file${doneCount > 1 ? "s" : ""} indexed successfully`,
+      );
+    }
 
-    toast.promise(promise, {
-      loading: `Indexing ${file.name}…`,
-      success: () => {
-        fetchDocs();
-        return `${file.name} indexed successfully.`;
-      },
-      error: (err) => `Failed to upload: ${err?.message ?? "unknown error"}`,
-    });
-
-    try {
-      await promise;
-    } catch {
-      // error already shown via toast
-    } finally {
-      setIsUploading(false);
+    setTimeout(() => {
+      queueRef.current = [];
+      setUploadQueue([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }, 1500);
+
+    isQueueRunning.current = false;
+  };
+
+  const enqueueFiles = (files: File[]) => {
+    const validItems: UploadItem[] = [];
+
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(
+          `${file.name} is too large — max 20 MB (got ${(file.size / 1024 / 1024).toFixed(1)} MB)`,
+        );
+        continue;
+      }
+      validItems.push({
+        id: `${Date.now()}-${Math.random()}`,
+        file,
+        status: "pending",
+        progress: 0,
+      });
+    }
+
+    if (validItems.length === 0) return;
+
+    // Update the ref SYNCHRONOUSLY so runQueue sees the new items immediately.
+    // setUploadQueue(updater) would defer the ref update to the React render cycle,
+    // causing runQueue to find no pending items and exit prematurely.
+    const next = [...queueRef.current, ...validItems];
+    queueRef.current = next;
+    setUploadQueue(next);
+
+    // If the queue is already running it will pick up new pending items
+    // in the next while-loop iteration. Otherwise start it.
+    if (!isQueueRunning.current) {
+      runQueue();
     }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadFile(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) enqueueFiles(files);
   };
 
-  // Drag-and-drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -200,14 +280,19 @@ export function KnowledgeBase() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) uploadFile(file);
+    // Some browsers fire a click event after a drop; suppress it.
+    justDroppedRef.current = true;
+    setTimeout(() => { justDroppedRef.current = false; }, 200);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) enqueueFiles(files);
   };
 
   const confirmDelete = async () => {
     if (!docToDelete) return;
 
-    const promise = apiRequest(`/documents/${docToDelete.document_id}`, { method: "DELETE" });
+    const promise = apiRequest(`/documents/${docToDelete.document_id}`, {
+      method: "DELETE",
+    });
 
     toast.promise(promise, {
       loading: "Removing document…",
@@ -217,11 +302,16 @@ export function KnowledgeBase() {
 
     try {
       await promise;
-      setDocs((prev) => prev.filter((d) => d.document_id !== docToDelete.document_id));
+      setDocs((prev) =>
+        prev.filter((d) => d.document_id !== docToDelete.document_id),
+      );
     } finally {
       setDocToDelete(null);
     }
   };
+
+  const doneCount = uploadQueue.filter((i) => i.status === "done").length;
+  const totalCount = uploadQueue.length;
 
   return (
     <>
@@ -256,7 +346,9 @@ export function KnowledgeBase() {
               disabled={isLoading}
               className="h-8"
             >
-              <RefreshCw className={cn("size-3.5 mr-2", isLoading && "animate-spin")} />
+              <RefreshCw
+                className={cn("size-3.5 mr-2", isLoading && "animate-spin")}
+              />
               Sync
             </Button>
           </div>
@@ -265,6 +357,7 @@ export function KnowledgeBase() {
           <div className="p-4 border-b bg-background">
             <input
               type="file"
+              multiple
               className="hidden"
               ref={fileInputRef}
               onChange={handleInputChange}
@@ -274,23 +367,90 @@ export function KnowledgeBase() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              onClick={() => !isUploading && fileInputRef.current?.click()}
+              onClick={() => { if (!justDroppedRef.current) fileInputRef.current?.click(); }}
               className={cn(
-                "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed",
-                "py-8 px-4 cursor-pointer transition-colors select-none",
+                "rounded-lg border-2 border-dashed transition-colors select-none cursor-pointer",
                 isDragging
                   ? "border-primary bg-primary/5"
                   : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30",
-                isUploading && "pointer-events-none opacity-60",
               )}
             >
-              {isUploading ? (
-                <>
-                  <Loader2 className="size-8 animate-spin text-primary" />
-                  <p className="text-sm font-medium">Processing document…</p>
-                </>
+              {isQueueActive ? (
+                /* ── Upload queue list ── */
+                <div className="p-4">
+                  <p className="text-xs font-medium text-muted-foreground mb-3">
+                    Uploading {doneCount} / {totalCount} files
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {uploadQueue.map((item) => (
+                      <div key={item.id} className="flex items-center gap-3">
+                        <FileIcon name={item.file.name} className="shrink-0" />
+
+                        <span
+                          className="text-sm truncate min-w-0 flex-1"
+                          title={item.file.name}
+                        >
+                          {item.file.name}
+                        </span>
+
+                        <div className="flex items-center gap-2 shrink-0 w-44">
+                          {item.status === "uploading" && (
+                            <>
+                              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-blue-500 rounded-full transition-all duration-150"
+                                  style={{ width: `${item.progress}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-blue-500 w-20 text-right">
+                                {item.progress}% uploading
+                              </span>
+                            </>
+                          )}
+                          {item.status === "processing" && (
+                            <>
+                              <Loader2 className="size-3.5 animate-spin text-amber-500 shrink-0" />
+                              <span className="text-xs text-amber-500">
+                                Processing…
+                              </span>
+                            </>
+                          )}
+                          {item.status === "done" && (
+                            <>
+                              <Check className="size-3.5 text-green-500 shrink-0" />
+                              <span className="text-xs text-green-500">Done</span>
+                            </>
+                          )}
+                          {item.status === "error" && (
+                            <>
+                              <X className="size-3.5 text-destructive shrink-0" />
+                              <span
+                                className="text-xs text-destructive truncate max-w-[100px]"
+                                title={item.error}
+                              >
+                                {item.error ?? "Error"}
+                              </span>
+                            </>
+                          )}
+                          {item.status === "pending" && (
+                            <>
+                              <div className="size-2 rounded-full bg-muted-foreground/40 shrink-0" />
+                              <span className="text-xs text-muted-foreground">
+                                Pending
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Click or drop more files to add to queue
+                  </p>
+                </div>
               ) : (
-                <>
+                /* ── Idle drop zone ── */
+                <div className="flex flex-col items-center justify-center gap-2 py-8 px-4">
                   <UploadCloud
                     className={cn(
                       "size-8 transition-colors",
@@ -298,12 +458,13 @@ export function KnowledgeBase() {
                     )}
                   />
                   <p className="text-sm font-medium">
-                    {isDragging ? "Drop to upload" : "Click or drag a file here"}
+                    {isDragging ? "Drop to upload" : "Click or drag files here"}
                   </p>
                   <p className="text-xs text-muted-foreground text-center">
-                    PDF, DOCX, PPTX, images, spreadsheets, source code, Markdown and more · max 20 MB
+                    PDF, DOCX, images, code, spreadsheets… · max 20 MB each ·
+                    multiple files supported
                   </p>
-                </>
+                </div>
               )}
             </div>
           </div>
@@ -320,7 +481,10 @@ export function KnowledgeBase() {
               <TableBody>
                 {docs.length === 0 && !isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={2} className="text-center py-12 text-muted-foreground">
+                    <TableCell
+                      colSpan={2}
+                      className="text-center py-12 text-muted-foreground"
+                    >
                       <div className="flex flex-col items-center gap-2 opacity-50">
                         <UploadCloud className="size-8" />
                         <p>No documents yet. Upload one to start RAG.</p>
@@ -333,7 +497,9 @@ export function KnowledgeBase() {
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <FileIcon name={doc.file_name} />
-                          <span className="truncate max-w-[380px]">{doc.file_name}</span>
+                          <span className="truncate max-w-[380px]">
+                            {doc.file_name}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
