@@ -46,8 +46,10 @@ export function ModelSelector() {
         const all = [...res.local, ...res.cloud];
         setModels(all);
 
-        // Auto-select first Ollama model if nothing is selected yet
-        if (!selectedModel && res.local.length > 0) {
+        // Read current value at fetch-completion time (not the stale mount-time closure)
+        // to avoid overwriting a persisted selection before Zustand hydrates localStorage.
+        const currentModel = useChatStore.getState().selectedModel;
+        if (!currentModel && res.local.length > 0) {
           setSelectedProvider("ollama");
           setSelectedModel(res.local[0].name);
         }

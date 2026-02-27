@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Info } from "lucide-react";
 import {
   Card,
@@ -9,10 +10,45 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useChatStore } from "@/hooks/use-chat-store";
+import { apiRequest } from "@/lib/api";
+import { AppSettings } from "@/types/settings";
+import { toast } from "sonner";
+
+async function saveRagSetting(key: string, value: string) {
+  await apiRequest("/settings", {
+    method: "PUT",
+    body: JSON.stringify({ settings: { [key]: value } }),
+  });
+}
 
 export function RagSettings() {
-  const { ragTopK, ragThreshold, setRagTopK, setRagThreshold } = useChatStore();
+  const [topK, setTopK] = useState(5);
+  const [threshold, setThreshold] = useState(0.3);
+
+  useEffect(() => {
+    apiRequest<AppSettings>("/settings").then((data) => {
+      if (data["rag_top_k"]) setTopK(parseInt(data["rag_top_k"] as string, 10));
+      if (data["rag_score_threshold"]) setThreshold(parseFloat(data["rag_score_threshold"] as string));
+    });
+  }, []);
+
+  const handleTopKBlur = async () => {
+    try {
+      await saveRagSetting("rag_top_k", String(topK));
+      toast.success("Top-K saved");
+    } catch {
+      toast.error("Failed to save");
+    }
+  };
+
+  const handleThresholdBlur = async () => {
+    try {
+      await saveRagSetting("rag_score_threshold", String(threshold));
+      toast.success("Threshold saved");
+    } catch {
+      toast.error("Failed to save");
+    }
+  };
 
   return (
     <Card>
@@ -20,6 +56,7 @@ export function RagSettings() {
         <CardTitle>RAG Retrieval</CardTitle>
         <CardDescription>
           Tune how documents are retrieved for each query.
+          Changes are saved when you leave the field.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -34,11 +71,12 @@ export function RagSettings() {
             min={1}
             max={20}
             step={1}
-            value={ragTopK}
+            value={topK}
             onChange={(e) => {
               const v = parseInt(e.target.value, 10);
-              if (!isNaN(v) && v >= 1 && v <= 20) setRagTopK(v);
+              if (!isNaN(v) && v >= 1 && v <= 20) setTopK(v);
             }}
+            onBlur={handleTopKBlur}
             className="w-28"
           />
         </div>
@@ -54,11 +92,12 @@ export function RagSettings() {
             min={0}
             max={1}
             step={0.05}
-            value={ragThreshold}
+            value={threshold}
             onChange={(e) => {
               const v = parseFloat(e.target.value);
-              if (!isNaN(v) && v >= 0 && v <= 1) setRagThreshold(v);
+              if (!isNaN(v) && v >= 0 && v <= 1) setThreshold(v);
             }}
+            onBlur={handleThresholdBlur}
             className="w-28"
           />
         </div>

@@ -106,12 +106,18 @@ async def ask_question_stream(
     session_id: uuid.UUID = Query(...),
     provider: str = Query("ollama"),
     model: str = Query("minimax-m2:cloud"),
-    top_k: int = Query(5),
-    score_threshold: float = Query(0.3),
+    top_k: Optional[int] = Query(None),
+    score_threshold: Optional[float] = Query(None),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_session)
 ):
     chat_history_service.add_message(db, session_id, "user", question, provider, model)
+
+    # Read RAG params from DB if not supplied by the caller
+    if top_k is None:
+        top_k = int(settings_service.get("rag_top_k", db) or 5)
+    if score_threshold is None:
+        score_threshold = float(settings_service.get("rag_score_threshold", db) or 0.3)
 
     # Read the provider's API key from DB (falls back to env var inside llm_service if None)
     _KEY_MAP = {

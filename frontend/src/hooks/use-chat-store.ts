@@ -18,11 +18,6 @@ interface ChatState {
   setSelectedProvider: (provider: string) => void;
   setSelectedModel: (model: string) => void;
 
-  // RAG retrieval params (persisted to localStorage)
-  ragTopK: number;
-  ragThreshold: number;
-  setRagTopK: (v: number) => void;
-  setRagThreshold: (v: number) => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -57,19 +52,12 @@ export const useChatStore = create<ChatState>()(
       setSelectedProvider: (provider) => set({ selectedProvider: provider }),
       setSelectedModel: (model) => set({ selectedModel: model }),
 
-      // RAG retrieval params
-      ragTopK: 5,
-      ragThreshold: 0.3,
-      setRagTopK: (v) => set({ ragTopK: v }),
-      setRagThreshold: (v) => set({ ragThreshold: v }),
     }),
     {
       name: "docrag-settings", // localStorage key
       partialize: (state) => ({
         selectedProvider: state.selectedProvider,
         selectedModel: state.selectedModel,
-        ragTopK: state.ragTopK,
-        ragThreshold: state.ragThreshold,
       }),
     },
   ),

@@ -90,7 +90,6 @@ export function AiProvidersSettings() {
     Record<string, TestConnectionResponse | null>
   >({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     apiRequest<AppSettings>("/settings").then((data) => {
@@ -111,6 +110,13 @@ export function AiProvidersSettings() {
         },
       );
       setOllamaStatus(result);
+      if (result.success) {
+        await apiRequest("/settings", {
+          method: "PUT",
+          body: JSON.stringify({ settings: { ollama_base_url: ollamaUrl } }),
+        });
+        toast.success("Ollama URL saved");
+      }
     } catch {
       setOllamaStatus({ success: false, message: "Request failed" });
     } finally {
@@ -133,6 +139,17 @@ export function AiProvidersSettings() {
         },
       );
       setTestStatus((prev) => ({ ...prev, [providerId]: result }));
+
+      // Auto-save the key on success only if the user entered a new one
+      if (result.success && apiKeys[keyName]) {
+        await apiRequest("/settings", {
+          method: "PUT",
+          body: JSON.stringify({ settings: { [keyName]: apiKeys[keyName] } }),
+        });
+        setExistingSettings((prev) => ({ ...prev, [keyName]: "****" }));
+        setApiKeys((prev) => ({ ...prev, [keyName]: "" }));
+        toast.success(`${providerId} API key saved`);
+      }
     } catch {
       setTestStatus((prev) => ({
         ...prev,
@@ -143,32 +160,13 @@ export function AiProvidersSettings() {
     }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const payload: Record<string, string> = {};
-      if (ollamaUrl) payload["ollama_base_url"] = ollamaUrl;
-      for (const { keyName } of CLOUD_PROVIDERS) {
-        if (apiKeys[keyName]) payload[keyName] = apiKeys[keyName];
-      }
-      await apiRequest("/settings", {
-        method: "PUT",
-        body: JSON.stringify({ settings: payload }),
-      });
-      toast.success("Settings saved");
-    } catch {
-      toast.error("Failed to save settings");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <Card>
       <CardHeader>
         <CardTitle>AI Providers</CardTitle>
         <CardDescription>
           Configure connection details for local and cloud LLM providers.
+          Keys are saved automatically on successful test.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -192,7 +190,7 @@ export function AiProvidersSettings() {
               {ollamaTesting ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                "Test"
+                "Test & Save"
               )}
             </Button>
           </div>
@@ -252,7 +250,7 @@ export function AiProvidersSettings() {
                   {testing[id] ? (
                     <Loader2 className="size-3.5 animate-spin" />
                   ) : (
-                    "Test"
+                    "Test & Save"
                   )}
                 </Button>
               </div>
@@ -268,11 +266,6 @@ export function AiProvidersSettings() {
           <p className="text-sm font-medium">Default Model</p>
           <ModelSelector />
         </div>
-
-        <Button onClick={handleSave} disabled={saving} className="w-full">
-          {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-          Save Provider Settings
-        </Button>
       </CardContent>
     </Card>
   );

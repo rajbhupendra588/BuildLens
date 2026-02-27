@@ -14,8 +14,6 @@ export function useChatStream() {
     currentSessionId,
     selectedProvider,
     selectedModel,
-    ragTopK,
-    ragThreshold,
     updateSessionTitle,
   } = useChatStore();
 
@@ -53,8 +51,6 @@ export function useChatStream() {
         session_id: currentSessionId,
         provider: selectedProvider,
         model: selectedModel,
-        top_k: String(ragTopK),
-        score_threshold: String(ragThreshold),
       });
 
       const reader = await apiStream(`/chat/ask-stream?${params.toString()}`, {
