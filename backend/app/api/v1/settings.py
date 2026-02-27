@@ -87,7 +87,7 @@ async def test_connection(body: TestConnectionRequest):
 
     try:
         if provider == "ollama":
-            url = (base_url or "http://localhost:11434").rstrip("/")
+            url = (base_url or app_settings.LLM.OLLAMA_BASE_URL).rstrip("/")
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{url}/api/tags")
             if resp.status_code == 200:
