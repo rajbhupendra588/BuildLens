@@ -32,9 +32,8 @@ export function ChatInterface() {
 
   const getViewport = useCallback((): HTMLElement | null => {
     return (
-      viewportRef.current?.querySelector(
-        "[data-radix-scroll-area-viewport]",
-      ) ?? null
+      viewportRef.current?.querySelector("[data-radix-scroll-area-viewport]") ??
+      null
     );
   }, []);
 
@@ -74,9 +73,9 @@ export function ChatInterface() {
       if (!currentSessionId) return;
       setIsHistoryLoading(true);
       try {
-        const rawHistory = await apiRequest<(Message & { detected_mode?: string })[]>(
-          `/chat/history/${currentSessionId}`,
-        );
+        const rawHistory = await apiRequest<
+          (Message & { detected_mode?: string })[]
+        >(`/chat/history/${currentSessionId}`);
         // Map snake_case API field to camelCase + look up label/icon
         const history: Message[] = rawHistory.map((m) => ({
           ...m,
@@ -160,7 +159,7 @@ export function ChatInterface() {
             scrollToBottom("smooth");
           }}
           className={cn(
-            "absolute bottom-[88px] left-1/2 -translate-x-1/2 z-10",
+            "absolute bottom-[140px] left-1/2 -translate-x-1/2 z-10",
             "flex items-center gap-1.5 rounded-full border bg-background px-3 py-1.5",
             "text-xs text-muted-foreground shadow-md",
             "hover:bg-muted transition-colors",

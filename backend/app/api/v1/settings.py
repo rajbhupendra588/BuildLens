@@ -49,14 +49,14 @@ async def get_settings(db: Session = Depends(get_session)):
         raw["ollama_base_url"] = app_settings.LLM.OLLAMA_BASE_URL
 
     # If a sensitive key is missing from DB but is set via env var, surface it as masked
-    _ENV_SENSITIVE = {
-        "openai_api_key": app_settings.LLM.OPENAI_API_KEY,
-        "gemini_api_key": app_settings.LLM.GEMINI_API_KEY,
-        "anthropic_api_key": app_settings.LLM.ANTHROPIC_API_KEY,
-    }
-    for key, env_val in _ENV_SENSITIVE.items():
-        if key not in raw and env_val:
-            raw[key] = env_val
+    # _ENV_SENSITIVE = {
+    #     "openai_api_key": app_settings.LLM.OPENAI_API_KEY,
+    #     "gemini_api_key": app_settings.LLM.GEMINI_API_KEY,
+    #     "anthropic_api_key": app_settings.LLM.ANTHROPIC_API_KEY,
+    # }
+    # for key, env_val in _ENV_SENSITIVE.items():
+    #     if key not in raw and env_val:
+    #         raw[key] = env_val
 
     result = {}
     for key, value in raw.items():
