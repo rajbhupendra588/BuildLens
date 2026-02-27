@@ -12,6 +12,7 @@ from app.services.retrieval_service import retrieval_service
 from app.services.llm_service import llm_service
 from app.services.chat_history_service import chat_history_service
 from app.services.intent_service import intent_classifier
+from app.services.settings_service import settings_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -87,11 +88,12 @@ async def update_session_title_logic(
     first_question: str,
     provider: str = "ollama",
     model: str = "",
+    api_key: Optional[str] = None,
 ):
     session = db.get(ChatSession, session_id)
 
     if session and session.title in ("New Chat", "New Conversation"):
-        new_title = await llm_service.generate_title(first_question, provider=provider, model=model)
+        new_title = await llm_service.generate_title(first_question, provider=provider, model=model, api_key=api_key)
         session.title = new_title
         db.add(session)
         db.commit()
@@ -111,9 +113,21 @@ async def ask_question_stream(
 ):
     chat_history_service.add_message(db, session_id, "user", question, provider, model)
 
+    # Read the provider's API key from DB (falls back to env var inside llm_service if None)
+    _KEY_MAP = {
+        "openai": "openai_api_key",
+        "gemini": "gemini_api_key",
+        "anthropic": "anthropic_api_key",
+        "openrouter": "openrouter_api_key",
+        "moonshot": "moonshot_api_key",
+        "minimax": "minimax_api_key",
+        "zai": "zai_api_key",
+    }
+    api_key = settings_service.get(_KEY_MAP[provider], db) if provider in _KEY_MAP else None
+
     history = chat_history_service.get_history(db, session_id, limit=10)
     if len(history) <= 1:
-        background_tasks.add_task(update_session_title_logic, db, session_id, question, provider, model)
+        background_tasks.add_task(update_session_title_logic, db, session_id, question, provider, model, api_key)
 
     context_chunks = await retrieval_service.search(question, limit=top_k, min_score=score_threshold)
 
@@ -145,7 +159,7 @@ async def ask_question_stream(
         full_ai_response = ""
         async for chunk_raw in llm_service.generate_answer_stream(
             question, context_chunks, history, provider=provider, model=model,
-            intent=intent,
+            intent=intent, api_key=api_key,
         ):
             yield chunk_raw
 

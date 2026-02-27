@@ -21,6 +21,7 @@ class LLMService:
         first_question: str,
         provider: str = "ollama",
         model: str = "",
+        api_key: Optional[str] = None,
     ) -> str:
         """Generate a short session title using the same provider the user is chatting with."""
         prompt = (
@@ -32,9 +33,9 @@ class LLMService:
             if provider == "ollama":
                 title = await self._title_ollama(prompt, model)
             elif provider == "openai":
-                title = await self._title_openai(prompt, model)
+                title = await self._title_openai(prompt, model, api_key)
             elif provider == "gemini":
-                title = await self._title_gemini(prompt, model)
+                title = await self._title_gemini(prompt, model, api_key)
             else:
                 # Unknown provider — fall back to truncation
                 return self._truncate_title(first_question)
@@ -71,9 +72,9 @@ class LLMService:
                         break
         return collected
 
-    async def _title_openai(self, prompt: str, model: str) -> str:
+    async def _title_openai(self, prompt: str, model: str, api_key: Optional[str] = None) -> str:
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.LLM.OPENAI_API_KEY)
+        client = AsyncOpenAI(api_key=api_key or settings.LLM.OPENAI_API_KEY)
         resp = await client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -82,9 +83,9 @@ class LLMService:
         )
         return resp.choices[0].message.content or ""
 
-    async def _title_gemini(self, prompt: str, model: str) -> str:
+    async def _title_gemini(self, prompt: str, model: str, api_key: Optional[str] = None) -> str:
         import google.generativeai as genai
-        genai.configure(api_key=settings.LLM.GEMINI_API_KEY)
+        genai.configure(api_key=api_key or settings.LLM.GEMINI_API_KEY)
         instance = genai.GenerativeModel(model_name=model)
         response = await instance.generate_content_async(prompt)
         return response.text or ""
@@ -131,6 +132,7 @@ class LLMService:
         provider: str,
         model: str,
         intent: Optional[IntentResult] = None,
+        api_key: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """Route streaming generation to the correct provider."""
         system_prompt = self._prepare_system_prompt(context_chunks, history, intent)
@@ -139,10 +141,10 @@ class LLMService:
             async for chunk in self._stream_ollama(model, query, system_prompt):
                 yield chunk
         elif provider == "openai":
-            async for chunk in self._stream_openai(model, query, system_prompt):
+            async for chunk in self._stream_openai(model, query, system_prompt, api_key):
                 yield chunk
         elif provider == "gemini":
-            async for chunk in self._stream_gemini(model, query, system_prompt):
+            async for chunk in self._stream_gemini(model, query, system_prompt, api_key):
                 yield chunk
         else:
             yield f"data: {json.dumps({'type': 'error', 'content': f'Unsupported provider: {provider}'})}\n\n"
@@ -194,12 +196,12 @@ class LLMService:
             yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
 
     async def _stream_openai(
-        self, model: str, query: str, system: str
+        self, model: str, query: str, system: str, api_key: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         try:
             from openai import AsyncOpenAI
 
-            client = AsyncOpenAI(api_key=settings.LLM.OPENAI_API_KEY)
+            client = AsyncOpenAI(api_key=api_key or settings.LLM.OPENAI_API_KEY)
             messages = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": query},
@@ -218,12 +220,12 @@ class LLMService:
             yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
 
     async def _stream_gemini(
-        self, model: str, query: str, system: str
+        self, model: str, query: str, system: str, api_key: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         try:
             import google.generativeai as genai
 
-            genai.configure(api_key=settings.LLM.GEMINI_API_KEY)
+            genai.configure(api_key=api_key or settings.LLM.GEMINI_API_KEY)
             model_instance = genai.GenerativeModel(
                 model_name=model,
                 system_instruction=system,

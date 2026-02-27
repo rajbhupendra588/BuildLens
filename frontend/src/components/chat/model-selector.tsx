@@ -39,10 +39,8 @@ export function ModelSelector() {
   // Derived — no separate isLoading state needed
   const isLoading = open && models === null;
 
-  // Fetch models whenever the dialog opens
+  // Prefetch models on mount so the dialog opens instantly
   useEffect(() => {
-    if (!open) return;
-
     apiRequest<ModelsResponse>("/models/")
       .then((res) => {
         const all = [...res.local, ...res.cloud];
@@ -55,10 +53,7 @@ export function ModelSelector() {
         }
       })
       .catch(console.error);
-
-    // Reset to null (loading) each time the dialog closes so next open re-fetches
-    return () => setModels(null);
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelect = (item: ModelItem) => {
     setSelectedProvider(item.provider);

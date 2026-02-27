@@ -8,6 +8,8 @@ from app.core.config import settings as app_settings
 from app.core.database import get_session
 from app.services.settings_service import settings_service
 
+
+
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 # Keys that contain sensitive API keys — returned masked if set
@@ -45,6 +47,16 @@ async def get_settings(db: Session = Depends(get_session)):
     # Apply environment defaults for values not yet saved in DB
     if "ollama_base_url" not in raw:
         raw["ollama_base_url"] = app_settings.LLM.OLLAMA_BASE_URL
+
+    # If a sensitive key is missing from DB but is set via env var, surface it as masked
+    _ENV_SENSITIVE = {
+        "openai_api_key": app_settings.LLM.OPENAI_API_KEY,
+        "gemini_api_key": app_settings.LLM.GEMINI_API_KEY,
+        "anthropic_api_key": app_settings.LLM.ANTHROPIC_API_KEY,
+    }
+    for key, env_val in _ENV_SENSITIVE.items():
+        if key not in raw and env_val:
+            raw[key] = env_val
 
     result = {}
     for key, value in raw.items():
