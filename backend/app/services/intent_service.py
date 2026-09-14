@@ -19,6 +19,9 @@ class IntentMode(str, Enum):
     CODE_ARCHITECT = "CODE_ARCHITECT"
     CODE_DEBUGGER = "CODE_DEBUGGER"
     SUMMARIZER = "SUMMARIZER"
+    BRIEFING_DOC = "BRIEFING_DOC"
+    STUDY_GUIDE = "STUDY_GUIDE"
+    INFOGRAPHIC = "INFOGRAPHIC"
     DATA_ANALYST = "DATA_ANALYST"
     CREATIVE = "CREATIVE"
 
@@ -29,6 +32,9 @@ _PRIORITY: List[IntentMode] = [
     IntentMode.CODE_ARCHITECT,
     IntentMode.DATA_ANALYST,
     IntentMode.SUMMARIZER,
+    IntentMode.BRIEFING_DOC,
+    IntentMode.STUDY_GUIDE,
+    IntentMode.INFOGRAPHIC,
     IntentMode.CREATIVE,
     IntentMode.DOCUMENT_ANALYST,
     IntentMode.GENERAL,
@@ -40,6 +46,9 @@ _LABELS: Dict[IntentMode, str] = {
     IntentMode.CODE_ARCHITECT: "Code Architect",
     IntentMode.CODE_DEBUGGER: "Code Debugger",
     IntentMode.SUMMARIZER: "Summarizer",
+    IntentMode.BRIEFING_DOC: "Briefing Document",
+    IntentMode.STUDY_GUIDE: "Study Guide",
+    IntentMode.INFOGRAPHIC: "Infographic",
     IntentMode.DATA_ANALYST: "Data Analyst",
     IntentMode.CREATIVE: "Creative Synthesizer",
 }
@@ -50,6 +59,9 @@ _ICONS: Dict[IntentMode, str] = {
     IntentMode.CODE_ARCHITECT: "💻",
     IntentMode.CODE_DEBUGGER: "🐛",
     IntentMode.SUMMARIZER: "📋",
+    IntentMode.BRIEFING_DOC: "📑",
+    IntentMode.STUDY_GUIDE: "📚",
+    IntentMode.INFOGRAPHIC: "🎨",
     IntentMode.DATA_ANALYST: "📊",
     IntentMode.CREATIVE: "💡",
 }
@@ -90,7 +102,8 @@ _PATTERNS: Dict[IntentMode, List[tuple]] = {
         (re.compile(r"\b(how\s+many|how\s+much|count|total|sum|minimum|maximum|min|max)\b", re.I), 3),
         (re.compile(r"\b(statistics?|statistical|analytics?)\b", re.I), 3),
         (re.compile(r"\b(correlation|regression|distribution|histogram|percentile|quartile)\b", re.I), 4),
-        (re.compile(r"\b(chart|graph|plot|visuali[sz]e?|dashboard)\b", re.I), 2),
+        (re.compile(r"\b(chart|graph|plot|visuali[sz]e?|dashboard|infographic)\b", re.I), 3),
+        (re.compile(r"\b(visual\s+content|visual\s+summary|one[\s-]?pager)\b", re.I), 4),
         (re.compile(r"\b(dataset|data\s+set|row[s]?|column[s]?|field[s]?|record[s]?|entry|entries)\b", re.I), 2),
         (re.compile(r"\b(compare|comparison|versus|vs\.?|difference\s+between)\b", re.I), 2),
         (re.compile(r"\b(ratio|proportion|percentage|percent|%)\b", re.I), 2),
@@ -115,6 +128,7 @@ _PATTERNS: Dict[IntentMode, List[tuple]] = {
         (re.compile(r"\b(suggest|suggestions?|propose|proposal|recommend(?:ation)?)\b", re.I), 2),
     ],
     IntentMode.DOCUMENT_ANALYST: [
+        (re.compile(r"\b(infographic|visual\s+content|visual\s+summary)\b", re.I), 4),
         (re.compile(r"\b(according\s+to|based\s+on\s+the\s+document|as\s+stated\s+in|the\s+document\s+(says?|states?|mentions?|notes?))\b", re.I), 4),
         (re.compile(r"\b(analyz[e|ing]|analyse|analysis|examine|examining)\b", re.I), 3),
         (re.compile(r"\b(document|documents?|report|reports?|paper|papers?|article|articles?|research|findings?)\b", re.I), 2),
@@ -220,6 +234,24 @@ class IntentClassifier:
             confidence=confidence,
             has_context=has_context,
             signals=signals,
+        )
+
+    def result_for_mode(
+        self,
+        mode: IntentMode,
+        *,
+        has_context: bool,
+        confidence: float = 1.0,
+        signals: Optional[List[str]] = None,
+    ) -> IntentResult:
+        """Build an IntentResult for an explicitly selected mode (e.g. slash commands)."""
+        return IntentResult(
+            mode=mode,
+            label=_LABELS[mode],
+            icon=_ICONS[mode],
+            confidence=confidence,
+            has_context=has_context,
+            signals=signals or [],
         )
 
 

@@ -45,11 +45,8 @@ import { FileIcon } from "@/components/library/file-icon";
 import { UploadDropzone } from "@/components/library/upload-dropzone";
 import { useDocumentLibrary } from "@/hooks/use-document-library";
 import { documentFileUrl } from "@/lib/api";
-import {
-  formatFileSize,
-  isImageFileName,
-  isPdfFileName,
-} from "@/lib/collect-dropped-files";
+import { DocumentPreviewPane } from "@/components/documents/document-preview-pane";
+import { formatFileSize, isImageFileName } from "@/lib/collect-dropped-files";
 import { cn } from "@/lib/utils";
 import { LibraryAskDialog } from "@/components/library/library-ask-dialog";
 import { LibraryListControls } from "@/components/library/library-list-controls";
@@ -596,25 +593,6 @@ function LibraryFileCard({
   );
 }
 
-const TEXT_PREVIEW_EXTS = new Set([
-  "txt",
-  "md",
-  "json",
-  "csv",
-  "xml",
-  "yaml",
-  "yml",
-  "html",
-  "htm",
-  "py",
-  "js",
-  "ts",
-  "tsx",
-  "jsx",
-  "sh",
-  "sql",
-]);
-
 function FilePreviewDialog({
   doc,
   onOpenChange,
@@ -622,50 +600,6 @@ function FilePreviewDialog({
   doc: LibraryDocument | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const src = doc ? documentFileUrl(doc.document_id) : "";
-  const image = doc ? isImageFileName(doc.file_name) : false;
-  const pdf = doc ? isPdfFileName(doc.file_name) : false;
-  const ext = doc?.file_name.split(".").pop()?.toLowerCase() ?? "";
-  const textPreview = TEXT_PREVIEW_EXTS.has(ext);
-  const [textContent, setTextContent] = useState<string | null>(null);
-  const [textError, setTextError] = useState<string | null>(null);
-  const [textLoading, setTextLoading] = useState(false);
-
-  useEffect(() => {
-    if (!doc || !textPreview) {
-      setTextContent(null);
-      setTextError(null);
-      setTextLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setTextLoading(true);
-    setTextError(null);
-    fetch(src)
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Could not load file");
-        return res.text();
-      })
-      .then((body) => {
-        if (!cancelled) setTextContent(body);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setTextError(
-            err instanceof Error ? err.message : "Could not load preview",
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setTextLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [doc, src, textPreview]);
-
   return (
     <Dialog open={!!doc} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col overflow-hidden p-0">
@@ -675,50 +609,10 @@ function FilePreviewDialog({
           </DialogTitle>
         </DialogHeader>
         {doc ? (
-          <div className="min-h-0 flex-1 overflow-auto bg-muted/30">
-            {image ? (
-              <div className="flex justify-center p-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={src}
-                  alt={doc.file_name}
-                  className="max-h-[70vh] max-w-full rounded-md object-contain"
-                />
-              </div>
-            ) : pdf ? (
-              <iframe
-                title={doc.file_name}
-                src={src}
-                className="h-[70vh] w-full border-0 bg-background"
-              />
-            ) : textPreview ? (
-              <div className="p-4">
-                {textLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading…</p>
-                ) : textError ? (
-                  <p className="text-sm text-destructive">{textError}</p>
-                ) : (
-                  <pre className="max-h-[70vh] overflow-auto rounded-md border bg-background p-4 text-xs leading-relaxed whitespace-pre-wrap break-words">
-                    {textContent}
-                  </pre>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                <FileIcon name={doc.file_name} className="size-10" />
-                <p className="text-sm text-muted-foreground">
-                  Preview is not available for this file type. Download to open
-                  it locally.
-                </p>
-                <Button asChild>
-                  <a href={src} download={doc.file_name}>
-                    <Download className="size-4" />
-                    Download
-                  </a>
-                </Button>
-              </div>
-            )}
-          </div>
+          <DocumentPreviewPane
+            documentId={doc.document_id}
+            fileName={doc.file_name}
+          />
         ) : null}
       </DialogContent>
     </Dialog>

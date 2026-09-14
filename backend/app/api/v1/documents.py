@@ -48,6 +48,8 @@ async def get_document_file(document_id: str):
         path,
         media_type=media_type or "application/octet-stream",
         filename=path.name,
+        # Inline so chat/library previews (iframe, img, fetch) do not force a download.
+        content_disposition_type="inline",
     )
 
 

@@ -96,6 +96,11 @@ async function uploadOne(
       },
     });
     patchItem(item.id, { status: "done", progress: 100, chatReady: true });
+    if (item.sessionId) {
+      window.dispatchEvent(
+        new CustomEvent("buildlens:session-attachments-changed"),
+      );
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     patchItem(item.id, { status: "error", error: msg });

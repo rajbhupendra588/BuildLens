@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  FolderOpen,
   Loader2,
   Mic,
   MicOff,
@@ -18,10 +19,36 @@ import {
   validateDocumentFile,
 } from "@/lib/document-upload";
 import { apiRequest } from "@/lib/api";
-import { enqueueDocumentFiles, useUploadQueueStore } from "@/stores/upload-queue-store";
-import { useChatStore } from "@/hooks/use-chat-store";
+import {
+  enqueueDocumentFiles,
+  useUploadQueueStore,
+} from "@/stores/upload-queue-store";
+import { useActiveChatSessionId } from "@/lib/active-chat-session";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { toast } from "sonner";
+import { ComposerAttachments } from "./composer-attachments";
+import { SlashCommandMenu } from "./slash-command-menu";
+import { useChatDocumentPreview } from "./chat-document-preview-context";
+import {
+  applySlashCommandSelection,
+  filterSlashCommands,
+  getSlashCommandFilter,
+  isSlashCommandMenuOpen,
+  type ChatSlashCommand,
+} from "@/lib/chat-slash-commands";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+
+interface LibraryDocRow {
+  document_id: string;
+  file_name: string;
+}
 
 interface ChatComposerProps {
   value: string;
@@ -30,6 +57,8 @@ interface ChatComposerProps {
   isTyping: boolean;
   onStop: () => void;
   disabled?: boolean;
+  ensureSession?: () => Promise<string | null>;
+  onAttachmentCountChange?: (count: number) => void;
 }
 
 export function ChatComposer({
@@ -39,21 +68,112 @@ export function ChatComposer({
   isTyping,
   onStop,
   disabled,
+  ensureSession,
+  onAttachmentCountChange,
 }: ChatComposerProps) {
-  const { currentSessionId } = useChatStore();
+  const activeSessionId = useActiveChatSessionId();
+  const { openPreview } = useChatDocumentPreview();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const uploadQueue = useUploadQueueStore((s) => s.uploadQueue);
+  const [libraryDocs, setLibraryDocs] = useState<LibraryDocRow[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+
+  /** Block input only until this chat can use the file (not during background library index). */
   const activeUpload = uploadQueue.find(
     (i) =>
-      i.status === "pending" ||
-      i.status === "uploading" ||
-      i.status === "processing",
+      (!activeSessionId || i.sessionId === activeSessionId) &&
+      (i.status === "pending" ||
+        i.status === "uploading" ||
+        (i.status === "processing" && !i.chatReady)),
+  );
+
+  const slashMenuOpen =
+    !isTyping && !activeUpload && !disabled && isSlashCommandMenuOpen(value);
+  const slashFilter = getSlashCommandFilter(value);
+  const slashCommands = useMemo(
+    () => filterSlashCommands(slashFilter),
+    [slashFilter],
+  );
+
+  useEffect(() => {
+    setSlashActiveIndex(0);
+  }, [slashFilter, slashMenuOpen]);
+
+  useEffect(() => {
+    if (slashActiveIndex >= slashCommands.length && slashCommands.length > 0) {
+      setSlashActiveIndex(slashCommands.length - 1);
+    }
+  }, [slashActiveIndex, slashCommands.length]);
+
+  const selectSlashCommand = useCallback(
+    (cmd: ChatSlashCommand) => {
+      onChange(applySlashCommandSelection(cmd));
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+    [onChange],
   );
 
   const voice = useVoiceInput({
     onInterim: (text) => onChange(text),
     onFinal: (text) => onChange(text),
   });
+
+  const loadLibrary = useCallback(async () => {
+    setLibraryLoading(true);
+    try {
+      const res = await apiRequest<{ documents: LibraryDocRow[] }>(
+        "/documents/",
+      );
+      setLibraryDocs(res.documents ?? []);
+    } catch {
+      setLibraryDocs([]);
+    } finally {
+      setLibraryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLibrary();
+    const onDocs = () => void loadLibrary();
+    window.addEventListener("buildlens:documents-changed", onDocs);
+    return () => window.removeEventListener("buildlens:documents-changed", onDocs);
+  }, [loadLibrary]);
+
+  const resolveSessionId = async (): Promise<string | null> => {
+    if (activeSessionId) return activeSessionId;
+    if (!ensureSession) return null;
+    return ensureSession();
+  };
+
+  const checkAttachmentSlots = async (
+    sessionId: string,
+    incomingCount: number,
+  ): Promise<number | null> => {
+    try {
+      const attachments = await apiRequest<{ id: string }[]>(
+        `/chat/sessions/${sessionId}/attachments`,
+      );
+      const slots = MAX_SESSION_ATTACHMENTS - attachments.length;
+      if (slots <= 0) {
+        toast.error(
+          `Maximum ${MAX_SESSION_ATTACHMENTS} files per conversation. Remove a file before adding another.`,
+        );
+        return null;
+      }
+      if (incomingCount > slots) {
+        toast.message(
+          `Only ${slots} more file${slots === 1 ? "" : "s"} can be added to this chat.`,
+        );
+        return slots;
+      }
+      return incomingCount;
+    } catch {
+      toast.error("Could not verify attachment limit. Try again.");
+      return null;
+    }
+  };
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -66,47 +186,58 @@ export function ChatComposer({
       }
     }
 
-    if (currentSessionId) {
-      try {
-        const attachments = await apiRequest<{ id: string }[]>(
-          `/chat/sessions/${currentSessionId}/attachments`,
-        );
-        const slots = MAX_SESSION_ATTACHMENTS - attachments.length;
-        if (slots <= 0) {
-          toast.error(
-            `Maximum ${MAX_SESSION_ATTACHMENTS} files per conversation. Remove a file before uploading another.`,
-          );
-          return;
-        }
-        if (list.length > slots) {
-          toast.message(
-            `Only ${slots} more file${slots === 1 ? "" : "s"} can be added to this chat.`,
-          );
-          enqueueDocumentFiles(list.slice(0, slots), currentSessionId);
-          if (fileInputRef.current) fileInputRef.current.value = "";
-          return;
-        }
-      } catch {
-        toast.error("Could not verify attachment limit. Try again.");
-        return;
-      }
+    const sessionId = await resolveSessionId();
+    if (!sessionId) {
+      toast.error("Start or select a conversation before uploading.");
+      return;
     }
 
-    enqueueDocumentFiles(list, currentSessionId);
+    const allowed = await checkAttachmentSlots(sessionId, list.length);
+    if (allowed === null) return;
+
+    const toUpload = list.slice(0, allowed);
+    enqueueDocumentFiles(toUpload, sessionId);
     toast.message(
-      currentSessionId
-        ? list.length === 1
-          ? `Uploading ${list[0].name} — you can chat as soon as preview is ready`
-          : `Uploading ${list.length} files for this conversation…`
-        : list.length === 1
-          ? `Uploading ${list[0].name} in the background…`
-          : `Uploading ${list.length} files in the background…`,
+      toUpload.length === 1
+        ? `Uploading ${toUpload[0].name} — you can chat as soon as preview is ready`
+        : `Uploading ${toUpload.length} files for this conversation…`,
     );
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const attachFromLibrary = async (doc: LibraryDocRow) => {
+    const sessionId = await resolveSessionId();
+    if (!sessionId) {
+      toast.error("Start or select a conversation first.");
+      return;
+    }
+    const allowed = await checkAttachmentSlots(sessionId, 1);
+    if (allowed === null) return;
+
+    try {
+      await apiRequest(`/chat/sessions/${sessionId}/attachments`, {
+        method: "POST",
+        body: JSON.stringify({ document_id: doc.document_id }),
+      });
+      window.dispatchEvent(
+        new CustomEvent("buildlens:session-attachments-changed"),
+      );
+      openPreview({
+        documentId: doc.document_id,
+        fileName: doc.file_name,
+      });
+      toast.success(`Added ${doc.file_name} to this chat`);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Could not attach file from library";
+      toast.error(msg);
+    }
+  };
+
   return (
-    <div className="w-full">
+    <div className="w-full max-w-3xl mx-auto">
+      <ComposerAttachments onAttachmentsChange={onAttachmentCountChange} />
+
       {activeUpload ? (
         <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin shrink-0" />
@@ -114,10 +245,10 @@ export function ChatComposer({
             {activeUpload.chatReady
               ? `Library indexing ${activeUpload.file.name}…`
               : activeUpload.status === "processing"
-              ? `Preparing ${activeUpload.file.name} for chat…`
-              : activeUpload.status === "uploading"
-                ? `Uploading ${activeUpload.file.name} (${activeUpload.progress}%)`
-                : `Queued: ${activeUpload.file.name}`}
+                ? `Preparing ${activeUpload.file.name} for chat…`
+                : activeUpload.status === "uploading"
+                  ? `Uploading ${activeUpload.file.name} (${activeUpload.progress}%)`
+                  : `Queued: ${activeUpload.file.name}`}
           </span>
         </div>
       ) : null}
@@ -134,6 +265,7 @@ export function ChatComposer({
           type="file"
           className="hidden"
           accept={DOCUMENT_ACCEPT}
+          multiple
           onChange={(e) => void handleFiles(e.target.files)}
         />
 
@@ -143,38 +275,111 @@ export function ChatComposer({
           variant="ghost"
           className="size-9 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
           disabled={!!activeUpload || disabled}
-          title="Upload PDF or document"
+          title="Upload file"
           onClick={() => fileInputRef.current?.click()}
         >
           <Paperclip className="size-5" />
         </Button>
 
-        <textarea
-          rows={1}
-          placeholder={
-            voice.isListening
-              ? "Listening…"
-              : "Message BuildLens — attach a PDF or ask about your library…"
-          }
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              if (!isTyping && value.trim()) onSend();
+        <DropdownMenu onOpenChange={(open) => open && void loadLibrary()}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-9 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+              disabled={!!activeUpload || disabled}
+              title="Add from library"
+            >
+              <FolderOpen className="size-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-72 w-72 overflow-y-auto">
+            <DropdownMenuLabel>Library files</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {libraryLoading ? (
+              <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+            ) : libraryDocs.length === 0 ? (
+              <DropdownMenuItem disabled>No indexed files yet</DropdownMenuItem>
+            ) : (
+              libraryDocs.map((doc) => (
+                <DropdownMenuItem
+                  key={doc.document_id}
+                  className="truncate"
+                  onSelect={() => void attachFromLibrary(doc)}
+                >
+                  {doc.file_name}
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="relative min-w-0 flex-1">
+          {slashMenuOpen ? (
+            <SlashCommandMenu
+              commands={slashCommands}
+              activeIndex={slashActiveIndex}
+              onHighlight={setSlashActiveIndex}
+              onSelect={selectSlashCommand}
+            />
+          ) : null}
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            placeholder={
+              voice.isListening
+                ? "Listening…"
+                : "Ask about your documents… (type / for commands)"
             }
-          }}
-          disabled={isTyping || !!activeUpload || disabled}
-          className={cn(
-            "flex-1 resize-none bg-transparent px-1 py-2.5 text-sm leading-relaxed",
-            "placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-40",
-          )}
-          onInput={(e) => {
-            const el = e.currentTarget;
-            el.style.height = "auto";
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-          }}
-        />
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (slashMenuOpen && slashCommands.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSlashActiveIndex((i) =>
+                    i + 1 >= slashCommands.length ? 0 : i + 1,
+                  );
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSlashActiveIndex((i) =>
+                    i - 1 < 0 ? slashCommands.length - 1 : i - 1,
+                  );
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  selectSlashCommand(slashCommands[slashActiveIndex]);
+                  return;
+                }
+              }
+              if (slashMenuOpen && e.key === "Escape") {
+                e.preventDefault();
+                onChange("");
+                return;
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (!isTyping && value.trim()) onSend();
+              }
+            }}
+            disabled={isTyping || !!activeUpload || disabled}
+            className={cn(
+              "w-full resize-none bg-transparent px-1 py-2.5 text-sm leading-relaxed",
+              "placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-40",
+            )}
+            onInput={(e) => {
+              const el = e.currentTarget;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+            }}
+            aria-autocomplete={slashMenuOpen ? "list" : undefined}
+            aria-expanded={slashMenuOpen}
+          />
+        </div>
 
         {voice.isSupported ? (
           <Button
@@ -213,7 +418,7 @@ export function ChatComposer({
           <Button
             size="icon"
             onClick={onSend}
-              disabled={!value.trim() || !!activeUpload || disabled}
+            disabled={!value.trim() || !!activeUpload || disabled}
             className="shrink-0 size-9 rounded-full"
             title="Send message"
           >

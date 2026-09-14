@@ -1,4 +1,5 @@
 import {
+  apiRequest,
   apiUploadWithProgress,
   pollIngestJob,
   pollIngestJobUntilChatReady,
@@ -111,10 +112,11 @@ export async function uploadAndIndexDocument(
     formData.append("session_id", options.sessionId);
   }
 
-  const accepted = await apiUploadWithProgress<{ job_id: string }>(
-    "/ingest/upload",
-    formData,
-    (pct) => options?.onProgress?.(Math.min(pct, 100)),
+  const accepted = await apiUploadWithProgress<{
+    job_id: string;
+    document_id: string;
+  }>("/ingest/upload", formData, (pct) =>
+    options?.onProgress?.(Math.min(pct, 100)),
   );
   options?.onProgress?.(100);
 
@@ -124,6 +126,24 @@ export async function uploadAndIndexDocument(
         options?.onChatReady?.();
       }
     });
+
+    if (accepted.document_id) {
+      try {
+        await apiRequest(
+          `/chat/sessions/${options.sessionId}/attachments`,
+          {
+            method: "POST",
+            body: JSON.stringify({ document_id: accepted.document_id }),
+          },
+        );
+      } catch {
+        // Row may already exist from ingest quick_extract attach_to_session
+      }
+      window.dispatchEvent(
+        new CustomEvent("buildlens:session-attachments-changed"),
+      );
+    }
+
     void pollIngestJob(accepted.job_id)
       .then(() => notifyDocumentsChanged())
       .catch(() => notifyDocumentsChanged());

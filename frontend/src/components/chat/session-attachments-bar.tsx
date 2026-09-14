@@ -67,7 +67,7 @@ export function SessionAttachmentsBar() {
         >
           <FileText className="size-3 shrink-0 text-primary" />
           <span className="truncate">{row.file_name}</span>
-          {row.index_status !== "indexed" && row.index_status !== "error" ? (
+          {row.index_status === "indexing" ? (
             <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
           ) : null}
         </div>

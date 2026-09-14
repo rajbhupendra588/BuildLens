@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { Message, SourceItem } from "@/types/chat";
 import { MessageMediaGallery } from "./message-media-gallery";
 import { documentFileUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+  formatChatDay,
+  formatChatDateTime,
+  formatChatStamp,
+} from "@/lib/chat-time";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -20,9 +25,36 @@ import {
   ChevronDown,
   ChevronUp,
   BookOpen,
+  Pencil,
+  Undo2,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { MermaidDiagram } from "./mermaid-diagram";
+import { InfographicBlock } from "./infographic-layout";
+import { AsciiArtBlock } from "./ascii-art-block";
+import {
+  looksLikeAsciiArt,
+  wrapAsciiArtBlocksInMarkdown,
+} from "@/lib/detect-ascii-art";
+import { markdownCodeText } from "@/lib/markdown-code-text";
+import { looksLikeInfographicJson } from "@/lib/parse-infographic";
 
 // ---------------------------------------------------------------------------
 // ModeBadge — color-coded intent pill rendered below the AI avatar
@@ -39,6 +71,12 @@ const MODE_COLORS: Record<string, string> = {
     "bg-red-50 text-red-600 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800",
   SUMMARIZER:
     "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800",
+  BRIEFING_DOC:
+    "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-800",
+  STUDY_GUIDE:
+    "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-800",
+  INFOGRAPHIC:
+    "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/40 dark:text-fuchsia-400 dark:border-fuchsia-800",
   DATA_ANALYST:
     "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800",
   CREATIVE:
@@ -212,7 +250,13 @@ function scoreColor(score: number) {
   return "text-muted-foreground bg-muted border-border";
 }
 
-function SourceCard({ source }: { source: SourceItem }) {
+function SourceCard({
+  source,
+  onOpen,
+}: {
+  source: SourceItem;
+  onOpen?: (source: SourceItem) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const imagePreview =
     source.is_image && source.document_id
@@ -228,10 +272,15 @@ function SourceCard({ source }: { source: SourceItem }) {
     <div className="rounded-lg border bg-muted/30 p-3 text-xs flex flex-col gap-1.5 hover:bg-muted/50 transition-colors">
       {/* File name + score */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-primary"
+          disabled={!source.document_id || !onOpen}
+          onClick={() => source.document_id && onOpen?.(source)}
+        >
           {getFileIcon(source.file_name)}
           <span className="font-medium truncate">{source.file_name}</span>
-        </div>
+        </button>
         <span
           className={cn(
             "shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[10px] font-semibold",
@@ -297,7 +346,13 @@ function SourceCard({ source }: { source: SourceItem }) {
 // ---------------------------------------------------------------------------
 const INITIAL_VISIBLE = 3;
 
-function SourceCards({ sources }: { sources: SourceItem[] }) {
+function SourceCards({
+  sources,
+  onOpenSource,
+}: {
+  sources: SourceItem[];
+  onOpenSource?: (source: SourceItem) => void;
+}) {
   const [showAll, setShowAll] = useState(false);
 
   if (!sources || sources.length === 0) return null;
@@ -314,7 +369,7 @@ function SourceCards({ sources }: { sources: SourceItem[] }) {
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {visible.map((src, i) => (
-          <SourceCard key={i} source={src} />
+          <SourceCard key={i} source={src} onOpen={onOpenSource} />
         ))}
       </div>
 
@@ -340,28 +395,278 @@ function SourceCards({ sources }: { sources: SourceItem[] }) {
   );
 }
 
+function MessageTimestamp({ iso, align }: { iso: string; align: "left" | "right" }) {
+  const stamp = formatChatStamp(iso);
+  if (!stamp) return null;
+  return (
+    <time
+      dateTime={iso}
+      title={formatChatDateTime(iso)}
+      className={cn(
+        "text-[11px] text-muted-foreground tabular-nums",
+        align === "right" && "text-right",
+      )}
+    >
+      {stamp}
+    </time>
+  );
+}
+
+function ActionIconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          disabled={disabled}
+          aria-label={label}
+          onClick={onClick}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function ChatDayDivider({ iso }: { iso: string }) {
+  const label = formatChatDay(iso);
+  if (!label) return null;
+  return (
+    <div className="flex items-center gap-3 py-3" role="separator">
+      <div className="h-px flex-1 bg-border" />
+      <span className="shrink-0 rounded-full border bg-card px-3 py-0.5 text-[11px] font-medium text-muted-foreground">
+        {label}
+      </span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // ChatMessageItem
 // ---------------------------------------------------------------------------
-export function ChatMessageItem({ message }: { message: Message }) {
-  if (!message || (!message.content && !message.sources?.length)) return null;
+export function ChatMessageItem({
+  message,
+  onOpenSource,
+  onEdit,
+  onRollback,
+  actionsDisabled,
+}: {
+  message: Message;
+  onOpenSource?: (source: SourceItem) => void;
+  onEdit?: (messageId: string, content: string) => void | Promise<void>;
+  onRollback?: (messageId: string) => void | Promise<void>;
+  actionsDisabled?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
+  const [confirmRollback, setConfirmRollback] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard denied — silently fail
+    }
+  }, [message.content]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = editRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [isEditing]);
+
+  if (!message || (!message.content && !message.sources?.length && !isEditing)) {
+    return null;
+  }
 
   const isAi = message.role === "assistant";
+  const canEdit = !isAi && !!onEdit;
+  const canRollback = !!onRollback;
+
+  const startEdit = () => {
+    setDraft(message.content);
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setDraft(message.content);
+    setIsEditing(false);
+  };
+
+  const saveEdit = async () => {
+    const next = draft.trim();
+    if (!next || !onEdit || next === message.content.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await onEdit(message.id, next);
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const actionBar = (
+    <div
+      className={cn(
+        "flex items-center gap-0.5",
+      )}
+    >
+      <ActionIconButton
+        label={copied ? "Copied" : "Copy"}
+        onClick={() => void handleCopy()}
+        disabled={actionsDisabled || !message.content}
+      >
+        {copied ? (
+          <Check className="size-3.5 text-emerald-500" strokeWidth={2.5} />
+        ) : (
+          <Copy className="size-3.5" />
+        )}
+      </ActionIconButton>
+      {canEdit ? (
+        <ActionIconButton
+          label="Edit"
+          onClick={startEdit}
+          disabled={actionsDisabled}
+        >
+          <Pencil className="size-3.5" />
+        </ActionIconButton>
+      ) : null}
+      {canRollback ? (
+        <ActionIconButton
+          label="Rollback"
+          onClick={() => setConfirmRollback(true)}
+          disabled={actionsDisabled}
+        >
+          <Undo2 className="size-3.5" />
+        </ActionIconButton>
+      ) : null}
+    </div>
+  );
+
+  const rollbackDialog = (
+    <AlertDialog open={confirmRollback} onOpenChange={setConfirmRollback}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Restore conversation?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This removes this message and everything after it so you can continue
+            from that point.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-white hover:bg-destructive/90"
+            onClick={() => {
+              setConfirmRollback(false);
+              void onRollback?.(message.id);
+            }}
+          >
+            Rollback
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 
   // User message
   if (!isAi) {
     return (
-      <div className="flex w-full justify-end py-2">
-        <div className="max-w-[min(720px,85%)] min-w-0 rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground shadow-sm">
-          {message.content}
+      <div className="group/msg flex w-full justify-end py-2">
+        <div className="flex max-w-[min(720px,85%)] min-w-0 flex-col items-end gap-1">
+          {isEditing ? (
+            <div className="w-full min-w-[min(280px,85vw)] rounded-2xl rounded-br-md border bg-card p-3 shadow-sm">
+              <textarea
+                ref={editRef}
+                value={draft}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  const el = e.target;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelEdit();
+                  }
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    void saveEdit();
+                  }
+                }}
+                rows={2}
+                className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none"
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={cancelEdit}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void saveEdit()}
+                  disabled={isSaving || !draft.trim()}
+                >
+                  Save & submit
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full min-w-0 rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground shadow-sm whitespace-pre-wrap">
+              {message.content}
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <MessageTimestamp iso={message.created_at} align="right" />
+            {!isEditing ? actionBar : null}
+          </div>
         </div>
+        {rollbackDialog}
       </div>
     );
   }
 
+  const markdownContent = wrapAsciiArtBlocksInMarkdown(message.content ?? "");
+
   // AI message
   return (
-    <div className="flex w-full gap-3 py-4">
+    <div className="group/msg flex w-full gap-3 py-4">
+      {rollbackDialog}
       <div className="flex flex-col items-center gap-1.5 shrink-0 mt-0.5">
         <div className="flex size-8 items-center justify-center rounded-lg border bg-card text-primary shadow-sm">
           <Sparkles className="size-4" />
@@ -408,9 +713,25 @@ export function ChatMessageItem({ message }: { message: Message }) {
               },
               code({ node, inline, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || "");
-                const codeString = String(children).replace(/\n$/, "");
+                const codeString = markdownCodeText(children);
                 if (!inline && match) {
+                  const lang = match[1].toLowerCase();
+                  if (lang === "mermaid") {
+                    return <MermaidDiagram chart={codeString} />;
+                  }
+                  if (
+                    lang === "infographic" ||
+                    (lang === "json" && looksLikeInfographicJson(codeString))
+                  ) {
+                    return <InfographicBlock rawJson={codeString} />;
+                  }
                   return <CodeBlock language={match[1]} code={codeString} />;
+                }
+                if (!inline && !match && codeString.includes("\n")) {
+                  if (looksLikeAsciiArt(codeString)) {
+                    return <AsciiArtBlock code={codeString} />;
+                  }
+                  return <CodeBlock language="text" code={codeString} />;
                 }
                 return (
                   <code
@@ -511,12 +832,20 @@ export function ChatMessageItem({ message }: { message: Message }) {
               },
             }}
           >
-            {message.content}
+            {markdownContent}
           </ReactMarkdown>
         </div>
 
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <MessageTimestamp iso={message.created_at} align="left" />
+          {actionBar}
+        </div>
+
         {/* Source citation cards */}
-        <SourceCards sources={message.sources ?? []} />
+        <SourceCards
+          sources={message.sources ?? []}
+          onOpenSource={onOpenSource}
+        />
       </div>
     </div>
   );

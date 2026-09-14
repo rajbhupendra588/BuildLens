@@ -40,17 +40,11 @@ export function ChatWorkspaceHeader({ className }: ChatWorkspaceHeaderProps) {
         <SidebarTrigger className="md:hidden" />
 
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold tracking-tight text-foreground">
-              Document Workspace
-            </span>
-            <span className="hidden h-4 w-px bg-border sm:block" />
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              Chat grounded in your uploads
-            </span>
-          </div>
+          <span className="text-sm font-semibold tracking-tight text-foreground truncate">
+            Chat
+          </span>
           <p className="text-[11px] text-muted-foreground truncate">
-            Answers are retrieved from indexed PDFs and files—not the open web
+            Document Q&A with cited sources
           </p>
         </div>
 
