@@ -5,8 +5,10 @@ from typing import Any
 
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.core.database import engine
 from app.models.session_attachment import SessionAttachment
+from app.services.quick_extract_service import extract_from_document
 
 
 def _db() -> Session:
@@ -48,6 +50,46 @@ def set_index_status(document_id: str, status: str) -> None:
         db.commit()
 
 
+def count_for_session(session_id: uuid.UUID) -> int:
+    return len(list_for_session(session_id))
+
+
+def attach_library_document(
+    session_id: uuid.UUID,
+    document_id: str,
+    file_name: str,
+    *,
+    indexed_in_library: bool,
+) -> SessionAttachment:
+    """Link an already-uploaded library file to a chat session."""
+    existing = list_for_session(session_id)
+    for row in existing:
+        if row.document_id == document_id:
+            return row
+
+    max_attach = settings.STORAGE.MAX_SESSION_ATTACHMENTS
+    if len(existing) >= max_attach:
+        raise ValueError(
+            f"Maximum {max_attach} files per conversation. Remove a file before adding another."
+        )
+
+    quick = extract_from_document(document_id, file_name)
+    if indexed_in_library:
+        index_status = "indexed"
+    elif quick.text.strip():
+        index_status = "quick_ready"
+    else:
+        index_status = "indexed"
+
+    return attach_to_session(
+        session_id,
+        document_id,
+        file_name,
+        quick.text,
+        index_status=index_status,
+    )
+
+
 def list_for_session(session_id: uuid.UUID) -> list[SessionAttachment]:
     with _db() as db:
         return list(
@@ -61,11 +103,15 @@ def list_for_session(session_id: uuid.UUID) -> list[SessionAttachment]:
 
 def build_session_context_chunks(
     session_id: uuid.UUID,
+    document_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Turn session quick extracts into RAG-style chunks (always high relevance)."""
     attachments = list_for_session(session_id)
+    allowed = set(document_ids) if document_ids else None
     chunks: list[dict[str, Any]] = []
     for att in attachments:
+        if allowed is not None and att.document_id not in allowed:
+            continue
         if not att.quick_text or not att.quick_text.strip():
             continue
         chunks.append(

@@ -34,8 +34,10 @@ class IngestSettings(BaseSettings):
 class StorageSettings(BaseSettings):
     """On-disk storage for original uploaded files (images, PDFs, etc.)."""
     UPLOAD_DIR: str = "uploads_data"
-    # Max upload size (bytes). Default 1 GiB.
-    MAX_UPLOAD_BYTES: int = 1024 * 1024 * 1024
+    # Max upload size (bytes). Default 20 MiB per file.
+    MAX_UPLOAD_BYTES: int = 20 * 1024 * 1024
+    MAX_LIBRARY_FILES: int = 5
+    MAX_SESSION_ATTACHMENTS: int = 5
     # Stream read/write chunk size while saving uploads (8 MiB).
     UPLOAD_STREAM_CHUNK_BYTES: int = 8 * 1024 * 1024
 

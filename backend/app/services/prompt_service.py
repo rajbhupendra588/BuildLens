@@ -231,6 +231,16 @@ class PromptComposer:
                 (c.get("metadata") or {}).get("element_type") == "session_quick"
                 for c in context_chunks
             )
+            file_names = sorted(
+                {
+                    (c.get("metadata") or {}).get("file_name")
+                    for c in context_chunks
+                    if (c.get("metadata") or {}).get("file_name")
+                    and (c.get("metadata") or {}).get("element_type")
+                    != "routing_hint"
+                }
+            )
+            multi_file = len(file_names) > 1
             prefix = (
                 "Context includes file(s) attached to this chat (quick preview). "
                 "Prefer this text for questions about recently uploaded files. "
@@ -238,7 +248,25 @@ class PromptComposer:
                 if has_session
                 else ""
             )
-            context_section = f"{prefix}Context from Documents:\n{context_text}"
+            routing = ""
+            if multi_file:
+                routing = (
+                    "Multiple uploaded files appear below. If the user names or "
+                    "describes a specific file (e.g. Tableau, resume, a dataset), "
+                    "answer ONLY from context blocks whose Source filename matches—"
+                    "never claim the topic is missing when a matching filename exists. "
+                    "Do not substitute a different file.\n\n"
+                )
+            inventory = ""
+            if file_names:
+                inventory = (
+                    "Files present in context: "
+                    + "; ".join(file_names)
+                    + ".\n\n"
+                )
+            context_section = (
+                f"{prefix}{routing}{inventory}Context from Documents:\n{context_text}"
+            )
         else:
             # No docs retrieved — add notice for specialist modes
             if intent.mode == IntentMode.GENERAL:

@@ -10,7 +10,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileIcon } from "@/components/library/file-icon";
-import { DOCUMENT_ACCEPT } from "@/lib/document-upload";
+import {
+  DOCUMENT_ACCEPT,
+  MAX_LIBRARY_FILES,
+  maxDocumentSizeLabel,
+} from "@/lib/document-upload";
 import { cn } from "@/lib/utils";
 import { UploadItem } from "@/types/document";
 
@@ -240,8 +244,9 @@ export function UploadDropzone({
               : "Drag files or folders here"}
           </p>
           <p className="text-xs text-muted-foreground text-center">
-            PDF recommended · DOCX, spreadsheets, images · up to 1 GB · folders
-            supported
+            PDF recommended · DOCX, spreadsheets, images · up to{" "}
+            {maxDocumentSizeLabel()} each · max {MAX_LIBRARY_FILES} files in
+            library
           </p>
           {!isDragging && (
             <div className="flex items-center gap-2 mt-1">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sun, Moon, Monitor, Download, Upload, Loader2 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -16,7 +16,6 @@ import { apiRequest } from "@/lib/api";
 import { useChatStore } from "@/hooks/use-chat-store";
 import { ChatSession } from "@/types/chat";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 const THEMES = [
   { value: "light", label: "Light", icon: Sun },
@@ -27,9 +26,14 @@ const THEMES = [
 export function PreferencesSettings() {
   const { theme, setTheme } = useTheme();
   const { setSessions, setCurrentSessionId } = useChatStore();
+  const [themeReady, setThemeReady] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setThemeReady(true);
+  }, []);
 
   const handleExport = async () => {
     setExporting(true);
@@ -93,10 +97,12 @@ export function PreferencesSettings() {
             {THEMES.map(({ value, label, icon: Icon }) => (
               <Button
                 key={value}
-                variant={theme === value ? "default" : "outline"}
+                variant={
+                  themeReady && theme === value ? "default" : "outline"
+                }
                 size="sm"
                 onClick={() => setTheme(value)}
-                className={cn("gap-1.5", theme === value && "")}
+                className="gap-1.5"
               >
                 <Icon className="size-3.5" />
                 {label}

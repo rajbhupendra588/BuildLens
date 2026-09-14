@@ -6,7 +6,12 @@ import { apiRequest, isTransientNetworkError } from "@/lib/api";
 import { uploadAndIndexDocument } from "@/lib/document-upload";
 import { collectFilesFromDataTransfer } from "@/lib/collect-dropped-files";
 import { DOCUMENTS_CHANGED_EVENT, notifyDocumentsChanged } from "@/lib/document-library-events";
-import { MAX_DOCUMENT_SIZE, maxDocumentSizeLabel } from "@/lib/document-upload";
+import {
+  librarySlotsRemaining,
+  MAX_DOCUMENT_SIZE,
+  MAX_LIBRARY_FILES,
+  maxDocumentSizeLabel,
+} from "@/lib/document-upload";
 import { LibraryDocument } from "@/types/document";
 import { useUploadQueueStore } from "@/stores/upload-queue-store";
 
@@ -37,12 +42,7 @@ export function useDocumentLibrary() {
         "/documents/",
         { retries: 8 },
       );
-      const sorted = [...response.documents].sort((a, b) =>
-        a.file_name.localeCompare(b.file_name, undefined, {
-          sensitivity: "base",
-        }),
-      );
-      setDocs(sorted);
+      setDocs(response.documents);
       return true;
     } catch (error) {
       if (!options?.silent) {
@@ -67,15 +67,34 @@ export function useDocumentLibrary() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const enqueueLibraryFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    const pendingLibrary = uploadQueue.filter((i) => !i.sessionId).length;
+    const slots = librarySlotsRemaining(docs.length + pendingLibrary);
+    if (slots <= 0) {
+      toast.error(
+        `Library limit reached (max ${MAX_LIBRARY_FILES} files). Remove a file before uploading.`,
+      );
+      return;
+    }
+    const batch = files.slice(0, slots);
+    if (batch.length < files.length) {
+      toast.message(
+        `Only ${batch.length} file${batch.length === 1 ? "" : "s"} added — library holds up to ${MAX_LIBRARY_FILES} files at a time.`,
+      );
+    }
+    enqueueFiles(batch);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    if (files.length > 0) enqueueFiles(files);
+    if (files.length > 0) enqueueLibraryFiles(files);
     e.target.value = "";
   };
 
   const handleDirInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    if (files.length > 0) enqueueFiles(files);
+    if (files.length > 0) enqueueLibraryFiles(files);
     e.target.value = "";
   };
 
@@ -97,7 +116,7 @@ export function useDocumentLibrary() {
       justDroppedRef.current = false;
     }, 200);
     const files = await collectFilesFromDataTransfer(e.dataTransfer.items);
-    if (files.length > 0) enqueueFiles(files);
+    if (files.length > 0) enqueueLibraryFiles(files);
   };
 
   const confirmDelete = async () => {

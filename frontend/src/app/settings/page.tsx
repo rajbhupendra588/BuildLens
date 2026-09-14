@@ -1,23 +1,18 @@
 import { SidebarInset } from "@/components/ui/sidebar";
-import { AiProvidersSettings } from "@/components/settings/ai-providers-settings";
-import { RagSettings } from "@/components/settings/rag-settings";
-import { StorageSettings } from "@/components/settings/storage-settings";
-import { PreferencesSettings } from "@/components/settings/preferences-settings";
+import { SettingsPageContent } from "@/components/settings/settings-page-content";
 
 export default function SettingsPage() {
   return (
-    <SidebarInset className="flex flex-col h-screen">
-      <header className="flex h-12 shrink-0 items-center border-b px-4">
-        <h1 className="text-sm font-semibold">Settings</h1>
+    <SidebarInset className="flex h-svh flex-col overflow-hidden bg-background">
+      <header className="flex shrink-0 flex-col gap-1 border-b px-4 py-3 md:px-6">
+        <h1 className="text-base font-semibold tracking-tight">Settings</h1>
+        <p className="text-xs text-muted-foreground">
+          Manage providers, retrieval, storage, and preferences
+        </p>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="mx-auto max-w-2xl space-y-6">
-          <AiProvidersSettings />
-          <RagSettings />
-          <StorageSettings />
-          <PreferencesSettings />
-        </div>
+      <div className="flex-1 overflow-y-auto">
+        <SettingsPageContent />
       </div>
     </SidebarInset>
   );

@@ -12,7 +12,12 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { cn } from "@/lib/utils";
-import { DOCUMENT_ACCEPT, validateDocumentFile } from "@/lib/document-upload";
+import {
+  DOCUMENT_ACCEPT,
+  MAX_SESSION_ATTACHMENTS,
+  validateDocumentFile,
+} from "@/lib/document-upload";
+import { apiRequest } from "@/lib/api";
 import { enqueueDocumentFiles, useUploadQueueStore } from "@/stores/upload-queue-store";
 import { useChatStore } from "@/hooks/use-chat-store";
 import { useVoiceInput } from "@/hooks/use-voice-input";
@@ -50,7 +55,7 @@ export function ChatComposer({
     onFinal: (text) => onChange(text),
   });
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     const list = Array.from(files);
     for (const file of list) {
@@ -60,6 +65,33 @@ export function ChatComposer({
         return;
       }
     }
+
+    if (currentSessionId) {
+      try {
+        const attachments = await apiRequest<{ id: string }[]>(
+          `/chat/sessions/${currentSessionId}/attachments`,
+        );
+        const slots = MAX_SESSION_ATTACHMENTS - attachments.length;
+        if (slots <= 0) {
+          toast.error(
+            `Maximum ${MAX_SESSION_ATTACHMENTS} files per conversation. Remove a file before uploading another.`,
+          );
+          return;
+        }
+        if (list.length > slots) {
+          toast.message(
+            `Only ${slots} more file${slots === 1 ? "" : "s"} can be added to this chat.`,
+          );
+          enqueueDocumentFiles(list.slice(0, slots), currentSessionId);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          return;
+        }
+      } catch {
+        toast.error("Could not verify attachment limit. Try again.");
+        return;
+      }
+    }
+
     enqueueDocumentFiles(list, currentSessionId);
     toast.message(
       currentSessionId

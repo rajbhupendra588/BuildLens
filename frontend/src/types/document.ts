@@ -5,6 +5,8 @@ export interface LibraryDocument {
   has_file?: boolean;
   media_type?: string | null;
   chunk_count?: number;
+  /** ISO timestamp from stored file mtime when the original is on disk */
+  uploaded_at?: string | null;
 }
 
 export interface UploadItem {

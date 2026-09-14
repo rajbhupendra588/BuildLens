@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, RefreshCw, Trash2 } from "lucide-react";
+import { Database, MessageSquare, RefreshCw, Trash2 } from "lucide-react";
+import { LibraryAskDialog } from "@/components/library/library-ask-dialog";
+import { LibraryDocument } from "@/types/document";
 import { Button } from "@/components/ui/button";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import {
@@ -40,6 +42,7 @@ export function KnowledgeBase({
   showMenuTrigger?: boolean;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [askDoc, setAskDoc] = useState<LibraryDocument | null>(null);
   const library = useDocumentLibrary();
 
   useEffect(() => {
@@ -145,14 +148,25 @@ export function KnowledgeBase({
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                          onClick={() => library.setDocToDelete(doc)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            title="Ask about this file"
+                            onClick={() => setAskDoc(doc)}
+                          >
+                            <MessageSquare className="size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => library.setDocToDelete(doc)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -162,6 +176,11 @@ export function KnowledgeBase({
           </div>
         </DialogContent>
       </Dialog>
+
+      <LibraryAskDialog
+        doc={askDoc}
+        onOpenChange={(open) => !open && setAskDoc(null)}
+      />
 
       <AlertDialog
         open={!!library.docToDelete}

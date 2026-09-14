@@ -23,7 +23,7 @@ import { apiRequest, logApiError } from "@/lib/api";
 import { ChatSession, Message, MODE_LABELS, MODE_ICONS } from "@/types/chat";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const STARTER_PROMPTS = [
   "Summarize the key points in my uploaded PDF",
@@ -34,6 +34,7 @@ const STARTER_PROMPTS = [
 
 export function ChatInterface() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentSessionId, selectedModel, addSession } = useChatStore();
   const {
     messages,
@@ -51,6 +52,7 @@ export function ChatInterface() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
+  const pendingQuestionSentRef = useRef<string | null>(null);
 
   const getViewport = useCallback((): HTMLElement | null => {
     return (
@@ -113,6 +115,32 @@ export function ChatInterface() {
     loadHistory();
   }, [currentSessionId, setMessages, scrollToBottom]);
 
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+
+  useEffect(() => {
+    pendingQuestionSentRef.current = null;
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    const q = searchParams.get("q")?.trim();
+    if (!q || !currentSessionId || isHistoryLoading || isTyping) return;
+    if (messages.length > 0) return;
+    if (pendingQuestionSentRef.current === `${currentSessionId}:${q}`) return;
+
+    pendingQuestionSentRef.current = `${currentSessionId}:${q}`;
+    router.replace(`/chat/${currentSessionId}`, { scroll: false });
+    userScrolledRef.current = false;
+    void sendMessageRef.current(q);
+  }, [
+    currentSessionId,
+    isHistoryLoading,
+    isTyping,
+    messages.length,
+    router,
+    searchParams,
+  ]);
+
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
     const msg = input.trim();
@@ -149,7 +177,7 @@ export function ChatInterface() {
 
   if (!currentSessionId) {
     return (
-      <div className="flex flex-1 min-h-0 flex-col bg-muted/20">
+      <div className="flex flex-1 min-h-0 flex-col bg-background">
         <ChatWorkspaceHeader />
         <SessionAttachmentsBar />
         <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
@@ -206,7 +234,7 @@ export function ChatInterface() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 relative bg-muted/15">
+    <div className="flex flex-col flex-1 min-h-0 relative bg-background">
       <ChatWorkspaceHeader />
       <SessionAttachmentsBar />
 

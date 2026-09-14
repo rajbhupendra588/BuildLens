@@ -50,7 +50,7 @@ export function SessionAttachmentsBar() {
   if (!currentSessionId || rows.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 border-b bg-muted/30 px-4 py-2 md:px-8">
+    <div className="flex flex-wrap gap-2 border-b bg-background px-4 py-2 md:px-8">
       {rows.map((row) => (
         <div
           key={row.id}

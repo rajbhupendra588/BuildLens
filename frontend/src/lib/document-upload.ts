@@ -5,12 +5,21 @@ import {
 } from "@/lib/api";
 import { notifyDocumentsChanged } from "@/lib/document-library-events";
 
-/** 1 GiB — must match backend STORAGE__MAX_UPLOAD_BYTES */
-export const MAX_DOCUMENT_SIZE = 1024 * 1024 * 1024;
+/** 20 MiB — must match backend STORAGE__MAX_UPLOAD_BYTES */
+export const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024;
+
+/** Must match backend STORAGE__MAX_LIBRARY_FILES */
+export const MAX_LIBRARY_FILES = 5;
+
+/** Must match backend STORAGE__MAX_SESSION_ATTACHMENTS */
+export const MAX_SESSION_ATTACHMENTS = 5;
 
 export function maxDocumentSizeLabel(): string {
-  const gb = MAX_DOCUMENT_SIZE / (1024 * 1024 * 1024);
-  return gb >= 1 ? `${gb} GB` : `${MAX_DOCUMENT_SIZE / (1024 * 1024)} MB`;
+  return `${MAX_DOCUMENT_SIZE / (1024 * 1024)} MB`;
+}
+
+export function librarySlotsRemaining(currentLibraryCount: number): number {
+  return Math.max(0, MAX_LIBRARY_FILES - currentLibraryCount);
 }
 
 export const DOCUMENT_ACCEPT = [

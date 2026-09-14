@@ -1,10 +1,77 @@
 import re
+from pathlib import Path
 from typing import List, Dict, Any
 from app.core.config import settings
 from app.services.vector_service import vector_service
 from qdrant_client import models
 
 # Meta-questions about the KB itself (file count, list uploads) — not document content.
+_QUERY_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "this",
+        "that",
+        "these",
+        "those",
+        "my",
+        "your",
+        "our",
+        "their",
+        "me",
+        "you",
+        "we",
+        "they",
+        "it",
+        "all",
+        "about",
+        "can",
+        "could",
+        "would",
+        "should",
+        "tell",
+        "explain",
+        "describe",
+        "show",
+        "give",
+        "please",
+        "do",
+        "does",
+        "did",
+        "how",
+        "when",
+        "where",
+        "why",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "and",
+        "or",
+        "with",
+        "from",
+        "file",
+        "document",
+        "upload",
+        "uploaded",
+        "pdf",
+    }
+)
+
 _INVENTORY_QUERY = re.compile(
     r"(?i)("
     r"how\s+many\s+(?:documents?|files?|pdfs?|items?|uploads?|things?)"
@@ -30,6 +97,96 @@ class RetrievalService:
 
     def is_knowledge_base_inventory_query(self, query: str) -> bool:
         return bool(_INVENTORY_QUERY.search(query.strip()))
+
+    @staticmethod
+    def _query_tokens(query: str) -> set[str]:
+        raw = re.findall(r"[a-z0-9]{2,}", query.lower())
+        return {t for t in raw if t not in _QUERY_STOPWORDS}
+
+    @staticmethod
+    def _filename_tokens(file_name: str) -> set[str]:
+        stem = Path(file_name).stem if file_name else ""
+        normalized = re.sub(r"[_\-.]+", " ", stem.lower())
+        return RetrievalService._query_tokens(normalized)
+
+    def score_filename_relevance(self, query: str, file_name: str) -> float:
+        """How well the query refers to this file name (0–1+)."""
+        q_tokens = self._query_tokens(query)
+        if not q_tokens or not file_name:
+            return 0.0
+
+        name_lower = file_name.lower()
+        name_tokens = self._filename_tokens(file_name)
+        overlap = q_tokens & name_tokens
+        score = len(overlap) / max(len(q_tokens), 1)
+
+        for token in q_tokens:
+            if len(token) >= 4 and token in name_lower:
+                score += 0.5
+            elif len(token) >= 3 and token in name_lower:
+                score += 0.25
+
+        return score
+
+    def resolve_query_to_documents(
+        self,
+        query: str,
+        documents: list[dict[str, Any]],
+    ) -> list[str] | None:
+        """
+        If the user names or describes a specific uploaded file (e.g. "tableau sample
+        data"), return that document_id so retrieval does not pull unrelated PDFs.
+        """
+        if not documents:
+            return None
+
+        scored: list[tuple[float, str, str]] = []
+        for doc in documents:
+            file_name = doc.get("file_name") or ""
+            doc_id = doc.get("document_id")
+            if not doc_id or not file_name:
+                continue
+            score = self.score_filename_relevance(query, file_name)
+            if score > 0:
+                scored.append((score, doc_id, file_name))
+
+        if not scored:
+            return None
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_id, _ = scored[0]
+        if best_score < 0.35:
+            return None
+
+        result = [best_id]
+        if len(scored) > 1 and scored[1][0] >= best_score * 0.9:
+            result.append(scored[1][1])
+        return result
+
+    def rerank_chunks_by_filename(
+        self,
+        query: str,
+        chunks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Boost chunks whose file_name matches query terms, then sort by score."""
+        if not chunks:
+            return chunks
+
+        ranked: list[tuple[float, dict[str, Any]]] = []
+        for chunk in chunks:
+            meta = chunk.get("metadata") or {}
+            file_name = meta.get("file_name") or ""
+            base = float(chunk.get("score") or 0)
+            boost = self.score_filename_relevance(query, file_name) * 0.2
+            ranked.append((base + boost, chunk))
+
+        ranked.sort(key=lambda x: x[0], reverse=True)
+        out: list[dict[str, Any]] = []
+        for score, chunk in ranked:
+            updated = dict(chunk)
+            updated["score"] = score
+            out.append(updated)
+        return out
 
     def build_inventory_context_chunks(
         self,
@@ -80,18 +237,40 @@ class RetrievalService:
             )
         return chunks
 
-    async def search(self, query: str, limit: int = 5, min_score: float = 0.3) -> List[Dict[str, Any]]:
+    async def search(
+        self,
+        query: str,
+        limit: int = 5,
+        min_score: float = 0.3,
+        document_ids: list[str] | None = None,
+    ) -> List[Dict[str, Any]]:
         """Semantic search for relevant chunks.
 
         Uses query_embed() so models like nomic-embed-text apply the
         'search_query:' prefix automatically — giving better recall than
         plain embed() on the query side.
+
+        When document_ids is set, results are limited to those library files
+        (used for conversations opened from a specific document).
         """
         query_vector = list(self.model.query_embed([query]))[0].tolist()
+
+        query_filter = None
+        if document_ids:
+            query_filter = models.Filter(
+                should=[
+                    models.FieldCondition(
+                        key="metadata.document_id",
+                        match=models.MatchValue(value=doc_id),
+                    )
+                    for doc_id in document_ids
+                ]
+            )
 
         response = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
+            query_filter=query_filter,
             limit=limit,
             with_payload=True,
             with_vectors=False,

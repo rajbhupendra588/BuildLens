@@ -10,8 +10,11 @@ from app.services.document_storage_service import document_storage
 from app.services.file_service import file_service
 from app.services.fast_ingest_service import try_fast_text_index
 from app.services.quick_extract_service import extract_from_document
+from app.core.config import settings
+from app.services.retrieval_service import retrieval_service
 from app.services.session_attachment_service import (
     attach_to_session,
+    count_for_session,
     set_index_status,
 )
 from app.services.vector_service import vector_service
@@ -235,6 +238,26 @@ async def upload_document(
             parsed_session = uuid.UUID(session_id.strip())
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid session_id") from exc
+        max_attach = settings.STORAGE.MAX_SESSION_ATTACHMENTS
+        if count_for_session(parsed_session) >= max_attach:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Maximum {max_attach} files per conversation. "
+                    "Remove a file before uploading another."
+                ),
+            )
+    else:
+        indexed = await retrieval_service.list_indexed_documents()
+        max_library = settings.STORAGE.MAX_LIBRARY_FILES
+        if len(indexed) >= max_library:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Library limit reached (max {max_library} files). "
+                    "Remove a file before uploading another."
+                ),
+            )
 
     receive_started = time.perf_counter()
     _path, byte_count = await document_storage.save_upload_stream(

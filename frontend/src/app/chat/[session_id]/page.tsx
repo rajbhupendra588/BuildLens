@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { useChatStore } from "@/hooks/use-chat-store";
 
-export default function ChatSessionPage() {
+function ChatSessionContent() {
   const params = useParams<{ session_id: string }>();
   const { setCurrentSessionId } = useChatStore();
 
@@ -20,5 +20,13 @@ export default function ChatSessionPage() {
     <SidebarInset className="flex flex-col h-svh overflow-hidden bg-background">
       <ChatInterface />
     </SidebarInset>
+  );
+}
+
+export default function ChatSessionPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChatSessionContent />
+    </Suspense>
   );
 }

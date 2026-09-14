@@ -16,7 +16,9 @@ from app.services.chat_history_service import chat_history_service
 from app.services.intent_service import intent_classifier
 from app.services.settings_service import settings_service
 from app.services.media_resolver import build_media_attachments, is_image_filename
+from app.services.document_storage_service import document_storage
 from app.services.session_attachment_service import (
+    attach_library_document,
     build_session_context_chunks,
     list_for_session,
     merge_with_vector_results,
@@ -78,6 +80,57 @@ async def remove_session(session_id: uuid.UUID, db: Session = Depends(get_sessio
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"message": "Session deleted successfully"}
+
+class AttachLibraryDocumentPayload(BaseModel):
+    document_id: str
+
+
+@router.post("/sessions/{session_id}/attachments")
+async def attach_library_document_to_session(
+    session_id: uuid.UUID,
+    payload: AttachLibraryDocumentPayload,
+    db: Session = Depends(get_session),
+):
+    """Link an indexed library file to a conversation (e.g. open chat from Library)."""
+    session = db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    document_id = payload.document_id.strip()
+    if not document_id:
+        raise HTTPException(status_code=400, detail="document_id is required")
+
+    docs = await retrieval_service.list_indexed_documents()
+    doc_meta = next((d for d in docs if d["document_id"] == document_id), None)
+    path = document_storage.find_path(document_id)
+    if not doc_meta and not path:
+        raise HTTPException(status_code=404, detail="Document not found in library")
+
+    file_name = (
+        doc_meta["file_name"]
+        if doc_meta
+        else (path.name if path else "unknown")
+    )
+
+    try:
+        row = attach_library_document(
+            session_id,
+            document_id,
+            file_name,
+            indexed_in_library=doc_meta is not None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "id": str(row.id),
+        "document_id": row.document_id,
+        "file_name": row.file_name,
+        "index_status": row.index_status,
+        "preview_chars": len(row.quick_text or ""),
+        "created_at": row.created_at.isoformat(),
+    }
+
 
 @router.get("/sessions/{session_id}/attachments")
 async def list_session_attachments(
@@ -179,26 +232,98 @@ async def ask_question_stream(
     if len(history) <= 1:
         background_tasks.add_task(update_session_title_logic, db, session_id, question, provider, model, api_key)
 
-    session_context = build_session_context_chunks(session_id)
+    indexed_docs = await retrieval_service.list_indexed_documents()
+    session_attachments = list_for_session(session_id)
+    scoped_document_ids = (
+        [a.document_id for a in session_attachments]
+        if session_attachments
+        else None
+    )
+
+    search_pool: list[dict] = list(indexed_docs)
+    if scoped_document_ids:
+        scoped_set = set(scoped_document_ids)
+        search_pool = [
+            d for d in search_pool if d.get("document_id") in scoped_set
+        ]
+        known = {d.get("document_id") for d in search_pool}
+        for att in session_attachments:
+            if att.document_id not in known:
+                search_pool.append(
+                    {
+                        "document_id": att.document_id,
+                        "file_name": att.file_name,
+                    }
+                )
+
+    target_document_ids = retrieval_service.resolve_query_to_documents(
+        question, search_pool
+    )
+    if (
+        not target_document_ids
+        and scoped_document_ids
+        and len(scoped_document_ids) == 1
+    ):
+        target_document_ids = scoped_document_ids
+
+    search_document_ids = target_document_ids or scoped_document_ids
+    session_context_filter = target_document_ids or scoped_document_ids
+    session_context = build_session_context_chunks(
+        session_id, document_ids=session_context_filter
+    )
+
+    search_limit = top_k
+    if target_document_ids and len(target_document_ids) == 1:
+        search_limit = max(top_k, 8)
 
     if _CONVERSATIONAL_QUERY.match(question.strip()):
         vector_chunks = []
-    elif retrieval_service.is_knowledge_base_inventory_query(question):
-        docs = await retrieval_service.list_indexed_documents()
+    elif (
+        retrieval_service.is_knowledge_base_inventory_query(question)
+        and not search_document_ids
+    ):
         stats = vector_service.get_stats()
         vector_chunks = retrieval_service.build_inventory_context_chunks(
-            docs, stats["total_chunks"]
+            indexed_docs, stats["total_chunks"]
         )
     else:
         vector_chunks = await retrieval_service.search(
-            question, limit=top_k, min_score=score_threshold
+            question,
+            limit=search_limit,
+            min_score=score_threshold,
+            document_ids=search_document_ids,
         )
 
     context_chunks = merge_with_vector_results(
-        session_context, vector_chunks, limit=top_k
+        session_context, vector_chunks, limit=search_limit
+    )
+    context_chunks = retrieval_service.rerank_chunks_by_filename(
+        question, context_chunks
     )
 
-    indexed_docs = await retrieval_service.list_indexed_documents()
+    if target_document_ids:
+        focus_names = [
+            d["file_name"]
+            for d in search_pool
+            if d.get("document_id") in target_document_ids and d.get("file_name")
+        ]
+        if focus_names:
+            context_chunks.insert(
+                0,
+                {
+                    "content": (
+                        "The user's question targets these uploaded file(s): "
+                        + ", ".join(focus_names)
+                        + ". Use excerpts from these files only; do not answer from "
+                        "other uploads unless the user explicitly asks about them."
+                    ),
+                    "score": 2.0,
+                    "metadata": {
+                        "file_name": focus_names[0],
+                        "element_type": "routing_hint",
+                    },
+                },
+            )
     media_attachments = build_media_attachments(
         question, context_chunks, indexed_docs
     )

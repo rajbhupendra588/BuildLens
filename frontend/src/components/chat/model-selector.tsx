@@ -4,12 +4,12 @@ import { useEffect, useState } from "react";
 import { Bot, ChevronDown, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { apiRequest } from "@/lib/api";
 import { ModelItem, ModelsResponse } from "@/types/chat";
 import { useChatStore } from "@/hooks/use-chat-store";
@@ -44,13 +44,10 @@ export function ModelSelector({ restrictToChatModels = true }: ModelSelectorProp
   } = useChatStore();
 
   const [open, setOpen] = useState(false);
-  // null = fetch in progress, [] = loaded with no results, [...] = loaded with data
   const [models, setModels] = useState<ModelItem[] | null>(null);
 
-  // Derived — no separate isLoading state needed
-  const isLoading = open && models === null;
+  const isLoading = models === null;
 
-  // Prefetch models on mount so the dialog opens instantly
   useEffect(() => {
     apiRequest<ModelsResponse>("/models/")
       .then((res) => {
@@ -84,7 +81,6 @@ export function ModelSelector({ restrictToChatModels = true }: ModelSelectorProp
   const isSelectable = (item: ModelItem) =>
     !restrictToChatModels || isChatPanelModel(item.name);
 
-  // Group models by provider in a defined order
   const grouped = PROVIDER_ORDER.reduce<Record<string, ModelItem[]>>(
     (acc, provider) => {
       const items = (models ?? []).filter((m) => m.provider === provider);
@@ -99,8 +95,8 @@ export function ModelSelector({ restrictToChatModels = true }: ModelSelectorProp
     : "Select a model";
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -110,64 +106,57 @@ export function ModelSelector({ restrictToChatModels = true }: ModelSelectorProp
           <span className="truncate">{displayLabel}</span>
           <ChevronDown className="size-3 shrink-0 opacity-50" />
         </Button>
-      </DialogTrigger>
+      </DropdownMenuTrigger>
 
-      <DialogContent className="max-w-sm p-0 overflow-hidden gap-0">
-        <DialogHeader className="px-4 pt-4 pb-3 border-b">
-          <DialogTitle className="text-sm font-medium">
-            Select Model
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="overflow-y-auto max-h-[60vh]">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="size-4 animate-spin mr-2" />
-              <span className="text-sm">Loading models…</span>
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[min(60vh,24rem)] w-72 overflow-y-auto p-1"
+      >
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            <Loader2 className="size-4 animate-spin mr-2" />
+            <span className="text-sm">Loading models…</span>
+          </div>
+        ) : Object.keys(grouped).length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8 px-2">
+            No models available. Check your Ollama connection or API keys.
+          </p>
+        ) : (
+          Object.entries(grouped).map(([provider, items], groupIndex) => (
+            <div key={provider}>
+              {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
+              <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                {PROVIDER_LABELS[provider] ?? provider}
+              </DropdownMenuLabel>
+              {items.map((item) => {
+                const isActive =
+                  item.provider === selectedProvider &&
+                  item.name === selectedModel;
+                const enabled = isSelectable(item);
+                return (
+                  <button
+                    key={`${item.provider}:${item.name}`}
+                    type="button"
+                    onClick={() => handleSelect(item)}
+                    disabled={!enabled}
+                    className={cn(
+                      "relative flex w-full cursor-default select-none items-center justify-between rounded-sm px-2 py-1.5 text-sm outline-none",
+                      enabled && "hover:bg-accent hover:text-accent-foreground",
+                      !enabled && "opacity-40 cursor-not-allowed",
+                      isActive && "bg-primary/5 text-primary font-medium",
+                    )}
+                  >
+                    <span className="truncate pr-2">{item.name}</span>
+                    {isActive ? (
+                      <Check className="size-3.5 shrink-0" />
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
-          ) : Object.keys(grouped).length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-10">
-              No models available. Check your Ollama connection or API keys.
-            </p>
-          ) : (
-            Object.entries(grouped).map(([provider, items]) => (
-              <div key={provider}>
-                {/* Provider section header */}
-                <div className="px-4 py-2 bg-muted/40 border-b">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    {PROVIDER_LABELS[provider] ?? provider}
-                  </p>
-                </div>
-
-                {/* Model rows */}
-                {items.map((item) => {
-                  const isActive =
-                    item.provider === selectedProvider &&
-                    item.name === selectedModel;
-                  const enabled = isSelectable(item);
-                  return (
-                    <button
-                      key={`${item.provider}:${item.name}`}
-                      onClick={() => handleSelect(item)}
-                      disabled={!enabled}
-                      className={cn(
-                        "w-full flex items-center justify-between px-4 py-2.5 text-sm text-left",
-                        enabled &&
-                          "hover:bg-accent hover:text-accent-foreground transition-colors",
-                        !enabled && "opacity-40 cursor-not-allowed",
-                        isActive && "bg-primary/5 text-primary font-medium",
-                      )}
-                    >
-                      <span className="truncate">{item.name}</span>
-                      {isActive && <Check className="size-3.5 shrink-0 ml-2" />}
-                    </button>
-                  );
-                })}
-              </div>
-            ))
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

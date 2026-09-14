@@ -1,4 +1,5 @@
 import mimetypes
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -16,12 +17,18 @@ async def get_documents():
         path = document_storage.find_path(doc["document_id"])
         has_file = bool(path and path.is_file())
         media_type, _ = mimetypes.guess_type(doc["file_name"])
+        uploaded_at = None
+        if has_file and path:
+            mtime = path.stat().st_mtime
+            uploaded_at = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+
         enriched.append(
             {
                 **doc,
                 "file_size": path.stat().st_size if has_file else None,
                 "has_file": has_file,
                 "media_type": media_type,
+                "uploaded_at": uploaded_at,
             }
         )
     return {"documents": enriched}

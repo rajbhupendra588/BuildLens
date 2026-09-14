@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   List,
   Loader2,
+  MessageSquare,
   RefreshCw,
   Search,
   Trash2,
@@ -50,11 +51,40 @@ import {
   isPdfFileName,
 } from "@/lib/collect-dropped-files";
 import { cn } from "@/lib/utils";
+import { LibraryAskDialog } from "@/components/library/library-ask-dialog";
+import { LibraryListControls } from "@/components/library/library-list-controls";
+import { MAX_LIBRARY_FILES, maxDocumentSizeLabel } from "@/lib/document-upload";
+import {
+  filterLibraryDocuments,
+  formatLibraryDate,
+  LibraryKindFilter,
+  LibrarySortKey,
+  libraryFileKind,
+  LIBRARY_KIND_FILTERS,
+  LIBRARY_SORT_OPTIONS,
+  sortLibraryDocuments,
+} from "@/lib/library-document-utils";
 import { LibraryDocument } from "@/types/document";
 
-function fileKindLabel(name: string): string {
-  const ext = name.split(".").pop()?.toUpperCase();
-  return ext && ext !== name.toUpperCase() ? ext : "FILE";
+const LIBRARY_SORT_STORAGE = "buildlens-library-sort";
+const LIBRARY_KIND_STORAGE = "buildlens-library-kind-filter";
+
+function loadStoredSort(): LibrarySortKey {
+  if (typeof window === "undefined") return "date-desc";
+  const raw = localStorage.getItem(LIBRARY_SORT_STORAGE);
+  if (LIBRARY_SORT_OPTIONS.some((o) => o.value === raw)) {
+    return raw as LibrarySortKey;
+  }
+  return "date-desc";
+}
+
+function loadStoredKindFilter(): LibraryKindFilter {
+  if (typeof window === "undefined") return "all";
+  const raw = localStorage.getItem(LIBRARY_KIND_STORAGE);
+  if (LIBRARY_KIND_FILTERS.includes(raw as LibraryKindFilter)) {
+    return raw as LibraryKindFilter;
+  }
+  return "all";
 }
 
 export function DocumentLibrary() {
@@ -63,21 +93,34 @@ export function DocumentLibrary() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [previewDoc, setPreviewDoc] = useState<LibraryDocument | null>(null);
   const [legacyDoc, setLegacyDoc] = useState<LibraryDocument | null>(null);
+  const [askDoc, setAskDoc] = useState<LibraryDocument | null>(null);
+  const [sortKey, setSortKey] = useState<LibrarySortKey>(loadStoredSort);
+  const [kindFilter, setKindFilter] =
+    useState<LibraryKindFilter>(loadStoredKindFilter);
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const restoreTargetRef = useRef<LibraryDocument | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(LIBRARY_SORT_STORAGE, sortKey);
+  }, [sortKey]);
+
+  useEffect(() => {
+    localStorage.setItem(LIBRARY_KIND_STORAGE, kindFilter);
+  }, [kindFilter]);
 
   const legacyCount = useMemo(
     () => library.docs.filter((d) => !d.has_file).length,
     [library.docs],
   );
 
-  const filteredDocs = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return library.docs;
-    return library.docs.filter((doc) =>
-      doc.file_name.toLowerCase().includes(q),
+  const displayedDocs = useMemo(() => {
+    const filtered = filterLibraryDocuments(
+      library.docs,
+      query,
+      kindFilter,
     );
-  }, [library.docs, query]);
+    return sortLibraryDocuments(filtered, sortKey);
+  }, [library.docs, query, kindFilter, sortKey]);
 
   const openPreview = (doc: LibraryDocument) => {
     if (!doc.has_file) {
@@ -97,9 +140,9 @@ export function DocumentLibrary() {
               <p className="text-sm text-muted-foreground">
                 {library.isLoading && library.docs.length === 0
                   ? "Loading uploaded files…"
-                  : `${library.docs.length} uploaded file${library.docs.length === 1 ? "" : "s"}`}
-                {query.trim() &&
-                  ` · ${filteredDocs.length} match${filteredDocs.length === 1 ? "" : "es"}`}
+                  : `${library.docs.length} of ${MAX_LIBRARY_FILES} files · ${maxDocumentSizeLabel()} each`}
+                {(query.trim() || kindFilter !== "all") &&
+                  ` · ${displayedDocs.length} shown`}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -140,13 +183,21 @@ export function DocumentLibrary() {
             </div>
           </div>
 
-          <div className="relative max-w-md">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search uploaded files…"
-              className="pl-8"
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative max-w-md flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name, kind, or extension…"
+                className="pl-8"
+              />
+            </div>
+            <LibraryListControls
+              sortKey={sortKey}
+              onSortChange={setSortKey}
+              kindFilter={kindFilter}
+              onKindFilterChange={setKindFilter}
             />
           </div>
         </div>
@@ -190,27 +241,28 @@ export function DocumentLibrary() {
                 <Skeleton key={i} className="h-40 rounded-xl" />
               ))}
             </div>
-          ) : filteredDocs.length === 0 ? (
+          ) : displayedDocs.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-center">
               <UploadCloud className="mb-3 size-10 text-muted-foreground/50" />
               <p className="text-sm font-medium">
                 {library.docs.length === 0
                   ? "No files in your library yet"
-                  : "No files match your search"}
+                  : "No files match your search or filters"}
               </p>
               <p className="mt-1 max-w-sm text-xs text-muted-foreground">
                 {library.docs.length === 0
                   ? "Upload PDFs, spreadsheets, images, or folders. Everything you index appears here."
-                  : "Try a different file name."}
+                  : "Try another search term or reset the kind filter."}
               </p>
             </div>
           ) : view === "grid" ? (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredDocs.map((doc) => (
+              {displayedDocs.map((doc) => (
                 <li key={doc.document_id}>
                   <LibraryFileCard
                     doc={doc}
                     onPreview={() => openPreview(doc)}
+                    onAsk={() => setAskDoc(doc)}
                     onDelete={() => library.setDocToDelete(doc)}
                     onRestore={() => {
                       restoreTargetRef.current = doc;
@@ -227,18 +279,19 @@ export function DocumentLibrary() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>File</TableHead>
-                    <TableHead className="hidden sm:table-cell">Type</TableHead>
-                    <TableHead className="hidden md:table-cell">Size</TableHead>
-                    <TableHead className="hidden lg:table-cell">
+                    <TableHead className="hidden sm:table-cell">Kind</TableHead>
+                    <TableHead className="hidden md:table-cell">Added</TableHead>
+                    <TableHead className="hidden lg:table-cell">Size</TableHead>
+                    <TableHead className="hidden xl:table-cell">
                       Chunks
                     </TableHead>
-                    <TableHead className="w-[120px] text-right">
+                    <TableHead className="w-[148px] text-right">
                       Actions
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredDocs.map((doc) => (
+                  {displayedDocs.map((doc) => (
                     <TableRow key={doc.document_id} className="group">
                       <TableCell className="font-medium">
                         <div className="flex min-w-0 items-center gap-2">
@@ -249,18 +302,22 @@ export function DocumentLibrary() {
                         </div>
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground sm:table-cell">
-                        {fileKindLabel(doc.file_name)}
+                        {libraryFileKind(doc.file_name)}
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
-                        {formatFileSize(doc.file_size)}
+                        {formatLibraryDate(doc.uploaded_at)}
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground lg:table-cell">
+                        {formatFileSize(doc.file_size)}
+                      </TableCell>
+                      <TableCell className="hidden text-muted-foreground xl:table-cell">
                         {doc.chunk_count ?? "—"}
                       </TableCell>
                       <TableCell className="text-right">
                         <FileActions
                           doc={doc}
                           onPreview={() => openPreview(doc)}
+                          onAsk={() => setAskDoc(doc)}
                           onDelete={() => library.setDocToDelete(doc)}
                           onRestore={() => {
                             restoreTargetRef.current = doc;
@@ -302,6 +359,11 @@ export function DocumentLibrary() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <LibraryAskDialog
+        doc={askDoc}
+        onOpenChange={(open) => !open && setAskDoc(null)}
+      />
 
       <FilePreviewDialog
         doc={previewDoc}
@@ -394,16 +456,27 @@ export function DocumentLibrary() {
 function FileActions({
   doc,
   onPreview,
+  onAsk,
   onDelete,
   onRestore,
 }: {
   doc: LibraryDocument;
   onPreview: () => void;
+  onAsk: () => void;
   onDelete: () => void;
   onRestore?: () => void;
 }) {
   return (
     <div className="flex justify-end gap-0.5">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-primary"
+        title="Ask about this file"
+        onClick={onAsk}
+      >
+        <MessageSquare className="size-4" />
+      </Button>
       {!doc.has_file && onRestore ? (
         <Button
           variant="ghost"
@@ -454,11 +527,13 @@ function FileActions({
 function LibraryFileCard({
   doc,
   onPreview,
+  onAsk,
   onDelete,
   onRestore,
 }: {
   doc: LibraryDocument;
   onPreview: () => void;
+  onAsk: () => void;
   onDelete: () => void;
   onRestore?: () => void;
 }) {
@@ -501,7 +576,9 @@ function LibraryFileCard({
             {doc.file_name}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {fileKindLabel(doc.file_name)}
+            {libraryFileKind(doc.file_name)}
+            {" · "}
+            {formatLibraryDate(doc.uploaded_at)}
             {" · "}
             {formatFileSize(doc.file_size)}
             {doc.chunk_count != null ? ` · ${doc.chunk_count} chunks` : ""}
@@ -510,6 +587,7 @@ function LibraryFileCard({
         <FileActions
           doc={doc}
           onPreview={onPreview}
+          onAsk={onAsk}
           onDelete={onDelete}
           onRestore={onRestore}
         />

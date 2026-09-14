@@ -353,6 +353,8 @@ class LLMService:
         )
         return (
             "You are a helpful assistant. Use the provided context and conversation history to answer.\n"
+            "When several uploaded files are listed, answer only from the file the user is asking about "
+            "(match their words to the Source filename). Never say a topic is absent if a filename matches.\n"
             f"Conversation History:\n{history_text}\n\n"
             f"Context from Documents:\n{context_text}\n\n"
             "If the answer is not in the context, say you don't know."
