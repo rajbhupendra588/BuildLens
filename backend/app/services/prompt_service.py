@@ -1,5 +1,5 @@
 """
-Prompt composition for DocRAG intent-based prompting system.
+Prompt composition for BuildLens intent-based prompting system.
 
 Each intent mode has a specialist expert prompt template.
 PromptComposer selects the right template and injects history + context.
@@ -13,6 +13,12 @@ from app.services.intent_service import IntentMode, IntentResult
 # ---------------------------------------------------------------------------
 # Expert prompt templates
 # ---------------------------------------------------------------------------
+
+_IMAGE_INLINE_NOTICE = (
+    "\n\n[IMPORTANT: The BuildLens chat UI renders referenced image files inline below "
+    "your message. Use the document/OCR context to describe what the image shows. "
+    "Do NOT claim you cannot display, embed, or render images—the app shows them for the user.]"
+)
 
 _NO_CONTEXT_NOTICE = (
     "\n\n[NOTICE: No relevant documents were found in the knowledge base for this query. "
@@ -194,6 +200,7 @@ class PromptComposer:
         context_chunks: List[Dict[str, Any]],
         history: List[Any],
         context_text: str,
+        inline_images: bool = False,
     ) -> str:
         """
         Build the complete system prompt for the LLM.
@@ -220,7 +227,18 @@ class PromptComposer:
 
         # ── Context section ──────────────────────────────────────────────────
         if context_chunks:
-            context_section = f"Context from Documents:\n{context_text}"
+            has_session = any(
+                (c.get("metadata") or {}).get("element_type") == "session_quick"
+                for c in context_chunks
+            )
+            prefix = (
+                "Context includes file(s) attached to this chat (quick preview). "
+                "Prefer this text for questions about recently uploaded files. "
+                "Full library search may still be indexing.\n\n"
+                if has_session
+                else ""
+            )
+            context_section = f"{prefix}Context from Documents:\n{context_text}"
         else:
             # No docs retrieved — add notice for specialist modes
             if intent.mode == IntentMode.GENERAL:
@@ -233,10 +251,13 @@ class PromptComposer:
                     + _NO_CONTEXT_NOTICE
                 )
 
-        return template.format(
+        prompt = template.format(
             history_section=history_section,
             context_section=context_section,
         )
+        if inline_images:
+            prompt += _IMAGE_INLINE_NOTICE
+        return prompt
 
 
 prompt_composer = PromptComposer()

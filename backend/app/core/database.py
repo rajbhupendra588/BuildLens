@@ -4,7 +4,10 @@ from app.core.config import settings
 
 engine = create_engine(
     settings.DB.URL,
-    echo=True # config to False on Production
+    echo=False,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=5,
 )
 
 def init_db():
@@ -22,6 +25,9 @@ def _migrate():
         # Add detected_mode column for intent-based prompting
         conn.execute(text(
             "ALTER TABLE chatmessage ADD COLUMN IF NOT EXISTS detected_mode VARCHAR(50)"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chatmessage ADD COLUMN IF NOT EXISTS media JSON"
         ))
         conn.commit()
 

@@ -1,5 +1,5 @@
 """
-Intent classification for DocRAG.
+Intent classification for BuildLens.
 
 Three-layer hybrid detection — purely in-memory, zero I/O, zero added latency:
   Layer 1: Source metadata signals  (strongest weight)

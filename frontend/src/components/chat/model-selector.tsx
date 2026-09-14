@@ -13,18 +13,29 @@ import {
 import { apiRequest } from "@/lib/api";
 import { ModelItem, ModelsResponse } from "@/types/chat";
 import { useChatStore } from "@/hooks/use-chat-store";
+import {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_CHAT_PROVIDER,
+  isChatPanelModel,
+} from "@/lib/chat-models";
 import { cn } from "@/lib/utils";
 
 const PROVIDER_LABELS: Record<string, string> = {
+  openrouter: "OpenRouter",
   ollama: "Ollama (Local)",
   openai: "OpenAI",
   gemini: "Gemini",
   anthropic: "Anthropic",
 };
 
-const PROVIDER_ORDER = ["ollama", "openai", "gemini", "anthropic"];
+const PROVIDER_ORDER = ["openrouter", "ollama", "openai", "gemini", "anthropic"];
 
-export function ModelSelector() {
+interface ModelSelectorProps {
+  /** Chat panel only lists OpenRouter allowlisted models; Settings can show all. */
+  restrictToChatModels?: boolean;
+}
+
+export function ModelSelector({ restrictToChatModels = true }: ModelSelectorProps) {
   const {
     selectedProvider,
     selectedModel,
@@ -46,22 +57,32 @@ export function ModelSelector() {
         const all = [...res.local, ...res.cloud];
         setModels(all);
 
-        // Read current value at fetch-completion time (not the stale mount-time closure)
-        // to avoid overwriting a persisted selection before Zustand hydrates localStorage.
-        const currentModel = useChatStore.getState().selectedModel;
-        if (!currentModel && res.local.length > 0) {
-          setSelectedProvider("ollama");
-          setSelectedModel(res.local[0].name);
+        const { selectedProvider: provider, selectedModel: model } =
+          useChatStore.getState();
+        const chatSelectionInvalid =
+          !model ||
+          (restrictToChatModels &&
+            (provider !== DEFAULT_CHAT_PROVIDER || !isChatPanelModel(model)));
+        const onSlowDefault =
+          restrictToChatModels &&
+          model === "nvidia/nemotron-3-ultra-550b-a55b:free";
+        if (chatSelectionInvalid || onSlowDefault) {
+          setSelectedProvider(DEFAULT_CHAT_PROVIDER);
+          setSelectedModel(DEFAULT_CHAT_MODEL);
         }
       })
-      .catch(console.error);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => setModels([]));
+  }, [restrictToChatModels, setSelectedProvider, setSelectedModel]);
 
   const handleSelect = (item: ModelItem) => {
+    if (restrictToChatModels && !isChatPanelModel(item.name)) return;
     setSelectedProvider(item.provider);
     setSelectedModel(item.name);
     setOpen(false);
   };
+
+  const isSelectable = (item: ModelItem) =>
+    !restrictToChatModels || isChatPanelModel(item.name);
 
   // Group models by provider in a defined order
   const grouped = PROVIDER_ORDER.reduce<Record<string, ModelItem[]>>(
@@ -123,13 +144,17 @@ export function ModelSelector() {
                   const isActive =
                     item.provider === selectedProvider &&
                     item.name === selectedModel;
+                  const enabled = isSelectable(item);
                   return (
                     <button
                       key={`${item.provider}:${item.name}`}
                       onClick={() => handleSelect(item)}
+                      disabled={!enabled}
                       className={cn(
                         "w-full flex items-center justify-between px-4 py-2.5 text-sm text-left",
-                        "hover:bg-accent hover:text-accent-foreground transition-colors",
+                        enabled &&
+                          "hover:bg-accent hover:text-accent-foreground transition-colors",
+                        !enabled && "opacity-40 cursor-not-allowed",
                         isActive && "bg-primary/5 text-primary font-medium",
                       )}
                     >

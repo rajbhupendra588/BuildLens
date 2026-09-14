@@ -1,6 +1,6 @@
-@startuml DocRAG_DataFlow
+@startuml BuildLens_DataFlow
 
-title DocRAG — Full Data & User Flow
+title BuildLens — Full Data & User Flow
 
 skinparam backgroundColor #FAFAFA
 skinparam sequence {

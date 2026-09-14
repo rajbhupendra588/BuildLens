@@ -1,10 +1,10 @@
 {
   "report": {
-    "project": "DocRAG",
+    "project": "BuildLens",
     "description": "Multimodal Self-Hosted Retrieval-Augmented Generation System",
     "version": "0.1.0",
     "generated_at": "2026-02-23T23:32:33+07:00",
-    "repository": "https://github.com/your-username/DocRAG"
+    "repository": "https://github.com/your-username/BuildLens"
   },
   "system": {
     "architecture": "Containerized monorepo (Docker Compose)",
@@ -14,7 +14,7 @@
         "technology": "Next.js 15+",
         "language": "TypeScript",
         "port": 3000,
-        "container": "docrag-ui",
+        "container": "buildlens-ui",
         "description": "App Router UI for document management and chat"
       },
       {
@@ -22,7 +22,7 @@
         "technology": "FastAPI",
         "language": "Python 3.14",
         "port": 8000,
-        "container": "docrag-api",
+        "container": "buildlens-api",
         "description": "REST API for ingestion, retrieval, chat orchestration"
       },
       {
@@ -30,16 +30,16 @@
         "technology": "Qdrant v1.17.0",
         "port_http": 6333,
         "port_grpc": 6334,
-        "container": "docrag-vector-db",
-        "collection": "doc_rag_knowledge",
+        "container": "buildlens-vector-db",
+        "collection": "knowledge_base",
         "description": "High-fidelity vector storage for semantic search"
       },
       {
         "name": "postgres",
         "technology": "PostgreSQL 16",
         "port": 5432,
-        "container": "docrag-postgres",
-        "database": "docrag_db",
+        "container": "buildlens-postgres",
+        "database": "buildlens_db",
         "description": "Relational storage for chat sessions and messages"
       }
     ],
@@ -292,7 +292,7 @@
         "FileService processes: Docling for rich docs, raw read for text files",
         "ChunkingService splits content into ≤512 token chunks",
         "VectorService embeds each chunk using all-MiniLM-L6-v2",
-        "Chunks upserted to Qdrant collection 'doc_rag_knowledge'",
+        "Chunks upserted to Qdrant collection 'knowledge_base'",
         "Frontend displays success with document_id and total_chunks"
       ]
     },

@@ -34,6 +34,14 @@ _FALLBACK_ANTHROPIC = [
 
 _OPENAI_CHAT_PREFIXES = ("gpt-4", "gpt-3.5-turbo", "o1", "o3", "o4")
 
+# Chat-panel OpenRouter allowlist — other providers stay available in Settings.
+_OPENROUTER_CHAT_MODELS = [
+    {"name": "inclusionai/ling-3.0-flash-fin:free", "provider": "openrouter"},
+    {"name": "poolside/laguna-s-2.1:free", "provider": "openrouter"},
+    {"name": "nvidia/nemotron-3-super-120b-a12b:free", "provider": "openrouter"},
+    {"name": "nvidia/nemotron-3-ultra-550b-a55b:free", "provider": "openrouter"},
+]
+
 
 async def _fetch_openai_models(api_key: str | None) -> list[dict]:
     if not api_key:
@@ -110,5 +118,10 @@ async def list_models(db: Session = Depends(get_session)):
 
     return {
         "local": [{"name": m["name"], "provider": "ollama"} for m in ollama_result],
-        "cloud": [*openai_result, *gemini_result, *anthropic_result],
+        "cloud": [
+            *_OPENROUTER_CHAT_MODELS,
+            *openai_result,
+            *gemini_result,
+            *anthropic_result,
+        ],
     }

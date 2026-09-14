@@ -1,6 +1,6 @@
 "use client";
 
-import { Message, ChatSession, SourceItem } from "@/types/chat";
+import { Message, ChatSession, MediaAttachment, SourceItem } from "@/types/chat";
 import { useRef, useState } from "react";
 import { useChatStore } from "./use-chat-store";
 import { apiStream, apiRequest } from "@/lib/api";
@@ -8,6 +8,7 @@ import { apiStream, apiRequest } from "@/lib/api";
 export function useChatStream() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
@@ -25,6 +26,7 @@ export function useChatStream() {
     if (!question.trim() || !currentSessionId) return;
 
     setIsTyping(true);
+    setStreamStatus(null);
 
     // Create a fresh AbortController for this request
     const controller = new AbortController();
@@ -41,9 +43,50 @@ export function useChatStream() {
     const aiMsgId = crypto.randomUUID();
     let accumulatedContent = "";
     let sources: SourceItem[] = [];
+    let media: MediaAttachment[] = [];
     let detectedMode: string | undefined;
     let modeLabel: string | undefined;
     let modeIcon: string | undefined;
+
+    const upsertAssistant = (content: string) => {
+      setMessages((prev) => {
+        const others = prev.filter((m) => m.id !== aiMsgId);
+        return [
+          ...others,
+          {
+            id: aiMsgId,
+            role: "assistant" as const,
+            content,
+            sources,
+            media,
+            detectedMode,
+            modeLabel,
+            modeIcon,
+            created_at: new Date().toISOString(),
+          },
+        ];
+      });
+    };
+
+    const patchAssistant = (content: string) => {
+      setMessages((prev) => {
+        const others = prev.filter((m) => m.id !== aiMsgId);
+        return [
+          ...others,
+          {
+            id: aiMsgId,
+            role: "assistant" as const,
+            content,
+            sources,
+            media,
+            detectedMode,
+            modeLabel,
+            modeIcon,
+            created_at: new Date().toISOString(),
+          },
+        ];
+      });
+    };
 
     try {
       const params = new URLSearchParams({
@@ -78,65 +121,38 @@ export function useChatStream() {
 
             if (data.type === "error") {
               console.error("LLM Error:", data.content);
+              upsertAssistant(
+                typeof data.content === "string"
+                  ? data.content
+                  : "Something went wrong while generating a reply.",
+              );
               break outer;
+            }
+
+            if (data.type === "status" && typeof data.text === "string") {
+              setStreamStatus(data.text);
             }
 
             if (data.type === "sources") {
               sources = data.sources ?? [];
-              // Render the AI bubble immediately with empty content + sources
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: aiMsgId,
-                  role: "assistant" as const,
-                  content: "",
-                  sources,
-                  created_at: new Date().toISOString(),
-                },
-              ]);
+              patchAssistant("");
+            }
+
+            if (data.type === "media") {
+              media = data.media ?? [];
+              patchAssistant(accumulatedContent);
             }
 
             if (data.type === "intent") {
               detectedMode = data.mode;
               modeLabel = data.label;
               modeIcon = data.icon;
-              // Update the AI bubble with mode badge fields
-              setMessages((prev) => {
-                const others = prev.filter((m) => m.id !== aiMsgId);
-                return [
-                  ...others,
-                  {
-                    id: aiMsgId,
-                    role: "assistant" as const,
-                    content: accumulatedContent,
-                    sources,
-                    detectedMode,
-                    modeLabel,
-                    modeIcon,
-                    created_at: new Date().toISOString(),
-                  },
-                ];
-              });
+              patchAssistant(accumulatedContent);
             }
 
             if (data.type === "content") {
               accumulatedContent += data.text;
-              setMessages((prev) => {
-                const others = prev.filter((m) => m.id !== aiMsgId);
-                return [
-                  ...others,
-                  {
-                    id: aiMsgId,
-                    role: "assistant" as const,
-                    content: accumulatedContent,
-                    sources,
-                    detectedMode,
-                    modeLabel,
-                    modeIcon,
-                    created_at: new Date().toISOString(),
-                  },
-                ];
-              });
+              patchAssistant(accumulatedContent);
             }
           } catch {
             // malformed SSE line — skip
@@ -157,6 +173,7 @@ export function useChatStream() {
                 role: "assistant" as const,
                 content: accumulatedContent,
                 sources,
+                media,
                 detectedMode,
                 modeLabel,
                 modeIcon,
@@ -171,6 +188,7 @@ export function useChatStream() {
     } finally {
       abortControllerRef.current = null;
       setIsTyping(false);
+      setStreamStatus(null);
 
       // Refresh session title after first exchange
       if (currentSessionId) {
@@ -188,5 +206,12 @@ export function useChatStream() {
     }
   };
 
-  return { messages, setMessages, sendMessage, isTyping, stopGeneration };
+  return {
+    messages,
+    setMessages,
+    sendMessage,
+    isTyping,
+    streamStatus,
+    stopGeneration,
+  };
 }

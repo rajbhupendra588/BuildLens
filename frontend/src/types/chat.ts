@@ -1,4 +1,5 @@
 export interface SourceItem {
+  document_id?: string | null;
   file_name: string;
   score: number;
   snippet: string;
@@ -6,6 +7,13 @@ export interface SourceItem {
   section_title?: string | null;
   language?: string | null;
   element_type?: string | null;
+  is_image?: boolean;
+}
+
+export interface MediaAttachment {
+  document_id: string;
+  file_name: string;
+  media_type: string;
 }
 
 export interface Message {
@@ -13,6 +21,7 @@ export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   sources?: SourceItem[];
+  media?: MediaAttachment[];
   provider?: string;
   model?: string;
   detectedMode?: string;

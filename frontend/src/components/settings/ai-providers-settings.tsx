@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, logApiError } from "@/lib/api";
 import { AppSettings, TestConnectionResponse } from "@/types/settings";
 import { toast } from "sonner";
 import { ModelSelector } from "@/components/chat/model-selector";
@@ -92,10 +92,14 @@ export function AiProvidersSettings() {
   const [testing, setTesting] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    apiRequest<AppSettings>("/settings").then((data) => {
-      setExistingSettings(data);
-      setOllamaUrl(data["ollama_base_url"] ?? "");
-    });
+    apiRequest<AppSettings>("/settings")
+      .then((data) => {
+        setExistingSettings(data);
+        setOllamaUrl(data["ollama_base_url"] ?? "");
+      })
+      .catch((error) => {
+        logApiError("Failed to load provider settings", error);
+      });
   }, []);
 
   const testOllama = async () => {
@@ -264,7 +268,7 @@ export function AiProvidersSettings() {
         {/* Default model */}
         <div className="space-y-2">
           <p className="text-sm font-medium">Default Model</p>
-          <ModelSelector />
+          <ModelSelector restrictToChatModels={false} />
         </div>
       </CardContent>
     </Card>

@@ -21,6 +21,7 @@ class ChatHistoryService:
         model: str,
         sources: Optional[List[Any]] = None,
         detected_mode: Optional[str] = None,
+        media: Optional[List[Any]] = None,
     ):
         message = ChatMessage(
             session_id=session_id,
@@ -30,6 +31,7 @@ class ChatHistoryService:
             model=model,
             sources=sources,
             detected_mode=detected_mode,
+            media=media,
         )
         db.add(message)
         db.commit()

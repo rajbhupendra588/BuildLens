@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Query, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
@@ -9,16 +10,36 @@ import json
 from app.core.database import get_session
 from app.models.chat import ChatSession, ChatMessage
 from app.services.retrieval_service import retrieval_service
+from app.services.vector_service import vector_service
 from app.services.llm_service import llm_service
 from app.services.chat_history_service import chat_history_service
 from app.services.intent_service import intent_classifier
 from app.services.settings_service import settings_service
+from app.services.media_resolver import build_media_attachments, is_image_filename
+from app.services.session_attachment_service import (
+    build_session_context_chunks,
+    list_for_session,
+    merge_with_vector_results,
+)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
+# Skip vector search for short conversational messages (faster replies, fewer irrelevant sources).
+_CONVERSATIONAL_QUERY = re.compile(
+    r"^(hi|hello|hey|thanks|thank you|good morning|good evening|bye|ok|okay)[!.?\s]*$",
+    re.I,
+)
+
 @router.post("/ask")
 async def ask_question(question: str):
-    context_chunks = await retrieval_service.search(question, limit=5)
+    if retrieval_service.is_knowledge_base_inventory_query(question):
+        docs = await retrieval_service.list_indexed_documents()
+        stats = vector_service.get_stats()
+        context_chunks = retrieval_service.build_inventory_context_chunks(
+            docs, stats["total_chunks"]
+        )
+    else:
+        context_chunks = await retrieval_service.search(question, limit=5)
 
     if not context_chunks:
         return {
@@ -58,6 +79,28 @@ async def remove_session(session_id: uuid.UUID, db: Session = Depends(get_sessio
         raise HTTPException(status_code=404, detail="Session not found")
     return {"message": "Session deleted successfully"}
 
+@router.get("/sessions/{session_id}/attachments")
+async def list_session_attachments(
+    session_id: uuid.UUID,
+    db: Session = Depends(get_session),
+):
+    session = db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    rows = list_for_session(session_id)
+    return [
+        {
+            "id": str(r.id),
+            "document_id": r.document_id,
+            "file_name": r.file_name,
+            "index_status": r.index_status,
+            "preview_chars": len(r.quick_text or ""),
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
 @router.get("/history/{session_id}")
 async def get_chat_history(
     session_id: uuid.UUID,
@@ -76,6 +119,7 @@ async def get_chat_history(
             "provider": m.provider,
             "model": m.model,
             "sources": m.sources or [],
+            "media": m.media or [],
             "detected_mode": m.detected_mode,
             "created_at": m.created_at.isoformat(),
         }
@@ -135,11 +179,34 @@ async def ask_question_stream(
     if len(history) <= 1:
         background_tasks.add_task(update_session_title_logic, db, session_id, question, provider, model, api_key)
 
-    context_chunks = await retrieval_service.search(question, limit=top_k, min_score=score_threshold)
+    session_context = build_session_context_chunks(session_id)
+
+    if _CONVERSATIONAL_QUERY.match(question.strip()):
+        vector_chunks = []
+    elif retrieval_service.is_knowledge_base_inventory_query(question):
+        docs = await retrieval_service.list_indexed_documents()
+        stats = vector_service.get_stats()
+        vector_chunks = retrieval_service.build_inventory_context_chunks(
+            docs, stats["total_chunks"]
+        )
+    else:
+        vector_chunks = await retrieval_service.search(
+            question, limit=top_k, min_score=score_threshold
+        )
+
+    context_chunks = merge_with_vector_results(
+        session_context, vector_chunks, limit=top_k
+    )
+
+    indexed_docs = await retrieval_service.list_indexed_documents()
+    media_attachments = build_media_attachments(
+        question, context_chunks, indexed_docs
+    )
 
     # Build serialisable source cards from retrieved chunks
     source_cards = [
         {
+            "document_id": c["metadata"].get("document_id"),
             "file_name": c["metadata"].get("file_name", "Unknown"),
             "score": round(c["score"], 3),
             "snippet": (c["content"] or "")[:200],
@@ -147,6 +214,7 @@ async def ask_question_stream(
             "section_title": c["metadata"].get("section_title"),
             "language": c["metadata"].get("language"),
             "element_type": c["metadata"].get("element_type"),
+            "is_image": is_image_filename(c["metadata"].get("file_name", "")),
         }
         for c in context_chunks
     ]
@@ -159,6 +227,9 @@ async def ask_question_stream(
         # Emit sources as first event so the client can render cards immediately
         yield f"data: {json.dumps({'type': 'sources', 'sources': source_cards})}\n\n"
 
+        if media_attachments:
+            yield f"data: {json.dumps({'type': 'media', 'media': media_attachments})}\n\n"
+
         # Emit intent event — consumed by frontend to render mode badge
         yield f"data: {json.dumps({'type': 'intent', 'mode': intent.mode.value, 'label': intent.label, 'icon': intent.icon})}\n\n"
 
@@ -166,6 +237,7 @@ async def ask_question_stream(
         async for chunk_raw in llm_service.generate_answer_stream(
             question, context_chunks, history, provider=provider, model=model,
             intent=intent, api_key=api_key,
+            inline_images=bool(media_attachments),
         ):
             yield chunk_raw
 
@@ -191,12 +263,18 @@ async def ask_question_stream(
                 chat_history_service.add_message(
                     db, session_id, "assistant", full_ai_response, provider, model,
                     sources=source_cards,
+                    media=media_attachments or None,
                     detected_mode=intent.mode.value,
                 )
             except Exception as e:
                 print(f"Error saving assistant response: {e}")
         else:
             print("DEBUG: Warning - full_ai_response is empty!")
+            err = (
+                "The model returned no answer. Try a faster model "
+                "(e.g. OpenRouter → Ling 3.0 Flash) or send the message again."
+            )
+            yield f"data: {json.dumps({'type': 'error', 'content': err})}\n\n"
 
     return StreamingResponse(
         generate_with_history_tracking(),

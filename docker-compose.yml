@@ -1,12 +1,12 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: docrag-postgres
+    container_name: buildlens-postgres
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-docrag_db}
+      POSTGRES_DB: ${POSTGRES_DB:-buildlens_db}
     ports:
       - "5432:5432"
     volumes:
@@ -17,11 +17,11 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - docrag-net
+      - buildlens-net
 
   qdrant:
     image: qdrant/qdrant:v1.17.0
-    container_name: docrag-vector-db
+    container_name: buildlens-vector-db
     ports:
       - "6333:6333" # HTTP API
       - "6334:6334" # gRPC API (Faster for large data)
@@ -35,32 +35,45 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - docrag-net
+      - buildlens-net
 
   backend:
     build: ./backend
-    container_name: docrag-api
+    container_name: buildlens-api
+    restart: unless-stopped
     env_file: .env
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
       - backend_venv:/app/.venv
-    # --reload enabled
-    command: sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      - backend_model_cache:/app/.cache
+      - ./uploads_data:/app/uploads_data
+    # No --reload: hot reload kills in-flight PDF ingest (OCR can run 10+ minutes).
+    command: sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    mem_limit: 4g
+    cpus: 2.0
     environment:
       - PYTHONPATH=/app
+      - OMP_NUM_THREADS=1
+      - ORT_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - TOKENIZERS_PARALLELISM=false
+      - MALLOC_ARENA_MAX=2
+      - PYTHONDONTWRITEBYTECODE=1
+      - FASTEMBED_CACHE_DIR=/app/.cache/fastembed
     depends_on:
       qdrant:
         condition: service_healthy
       postgres:
         condition: service_healthy
     networks:
-      - docrag-net
+      - buildlens-net
 
   frontend:
     build: ./frontend
-    container_name: docrag-ui
+    container_name: buildlens-ui
+    restart: unless-stopped
     env_file: .env
     ports:
       - "3000:3000"
@@ -69,13 +82,14 @@ services:
       - frontend_node_modules:/app/node_modules
     command: npm run dev
     networks:
-      - docrag-net
+      - buildlens-net
 
 volumes:
   backend_venv:
+  backend_model_cache:
   frontend_node_modules:
   postgres_data:
 
 networks:
-  docrag-net:
+  buildlens-net:
     driver: bridge

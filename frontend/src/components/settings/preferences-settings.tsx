@@ -41,7 +41,7 @@ export function PreferencesSettings() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `docrag-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `buildlens-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Chat history exported");
@@ -70,7 +70,7 @@ export function PreferencesSettings() {
       setCurrentSessionId(null);
       toast.success("Chat history imported");
     } catch {
-      toast.error("Import failed — make sure the file is a valid DocRAG backup");
+      toast.error("Import failed — make sure the file is a valid BuildLens backup");
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -137,7 +137,7 @@ export function PreferencesSettings() {
             <div>
               <p className="text-sm">Import Chat History</p>
               <p className="text-xs text-muted-foreground">
-                Restore sessions from a DocRAG backup file (.json).
+                Restore sessions from a BuildLens backup file (.json).
               </p>
             </div>
             <Button

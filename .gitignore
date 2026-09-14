@@ -1,5 +1,6 @@
 qdrant_data/
 postgres_data/
+uploads_data/
 .claude/
 .DS_Store
 

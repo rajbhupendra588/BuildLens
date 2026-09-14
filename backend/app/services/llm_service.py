@@ -36,6 +36,8 @@ class LLMService:
                 title = await self._title_openai(prompt, model, api_key)
             elif provider == "gemini":
                 title = await self._title_gemini(prompt, model, api_key)
+            elif provider == "openrouter":
+                title = await self._title_openrouter(prompt, model, api_key)
             else:
                 # Unknown provider — fall back to truncation
                 return self._truncate_title(first_question)
@@ -90,6 +92,16 @@ class LLMService:
         response = await instance.generate_content_async(prompt)
         return response.text or ""
 
+    async def _title_openrouter(self, prompt: str, model: str, api_key: Optional[str] = None) -> str:
+        client = self._openrouter_client(api_key)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=20,
+            temperature=0,
+        )
+        return resp.choices[0].message.content or ""
+
     async def generate_answer(
         self,
         query: str,
@@ -133,9 +145,12 @@ class LLMService:
         model: str,
         intent: Optional[IntentResult] = None,
         api_key: Optional[str] = None,
+        inline_images: bool = False,
     ) -> AsyncGenerator[str, None]:
         """Route streaming generation to the correct provider."""
-        system_prompt = self._prepare_system_prompt(context_chunks, history, intent)
+        system_prompt = self._prepare_system_prompt(
+            context_chunks, history, intent, inline_images=inline_images
+        )
 
         if provider == "ollama":
             async for chunk in self._stream_ollama(model, query, system_prompt):
@@ -145,6 +160,9 @@ class LLMService:
                 yield chunk
         elif provider == "gemini":
             async for chunk in self._stream_gemini(model, query, system_prompt, api_key):
+                yield chunk
+        elif provider == "openrouter":
+            async for chunk in self._stream_openrouter(model, query, system_prompt, api_key):
                 yield chunk
         else:
             yield f"data: {json.dumps({'type': 'error', 'content': f'Unsupported provider: {provider}'})}\n\n"
@@ -241,6 +259,76 @@ class LLMService:
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
 
+    @staticmethod
+    def _openrouter_stream_text(delta: Any) -> tuple[str, bool]:
+        """Return (text, is_reasoning). Some models stream chain-of-thought in `reasoning`."""
+        if delta is None:
+            return "", False
+        content = getattr(delta, "content", None) or ""
+        if content:
+            return content, False
+        reasoning = getattr(delta, "reasoning", None) or ""
+        if reasoning:
+            return reasoning, True
+        return "", False
+
+    async def _stream_openrouter(
+        self, model: str, query: str, system: str, api_key: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
+        if not api_key:
+            yield f"data: {json.dumps({'type': 'error', 'content': 'OpenRouter API key is not configured. Add it in Settings.'})}\n\n"
+            return
+        try:
+            client = self._openrouter_client(api_key)
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": query},
+                ],
+                stream=True,
+                max_tokens=2048,
+            )
+            saw_answer = False
+            saw_reasoning = False
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                text, is_reasoning = self._openrouter_stream_text(delta)
+                if not text:
+                    continue
+                if is_reasoning:
+                    if not saw_reasoning:
+                        saw_reasoning = True
+                        yield f"data: {json.dumps({'type': 'status', 'text': 'Model is reasoning (large Nemotron models can take 1–2 minutes before the reply appears)…'})}\n\n"
+                    continue
+                saw_answer = True
+                yield f"data: {json.dumps({'type': 'content', 'text': text})}\n\n"
+
+            if not saw_answer:
+                hint = (
+                    "The model did not return a visible answer "
+                    "(often due to long internal reasoning or provider overload). "
+                    "Try OpenRouter → Ling 3.0 Flash for faster replies."
+                )
+                yield f"data: {json.dumps({'type': 'error', 'content': hint})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+
+    def _openrouter_client(self, api_key: Optional[str]):
+        from openai import AsyncOpenAI
+
+        return AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            default_headers={
+                "HTTP-Referer": "http://localhost:3000",
+                "X-Title": "BuildLens",
+            },
+        )
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -250,11 +338,14 @@ class LLMService:
         context_chunks: List[Dict[str, Any]],
         history: List[Any],
         intent: Optional[IntentResult] = None,
+        inline_images: bool = False,
     ) -> str:
         context_text = retrieval_service.format_context_for_llm(context_chunks)
 
         if intent is not None:
-            return prompt_composer.compose(intent, context_chunks, history, context_text)
+            return prompt_composer.compose(
+                intent, context_chunks, history, context_text, inline_images=inline_images
+            )
 
         # Legacy fallback (title generation, non-intent paths)
         history_text = (

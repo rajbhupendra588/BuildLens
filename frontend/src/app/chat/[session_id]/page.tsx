@@ -17,7 +17,7 @@ export default function ChatSessionPage() {
   }, [params.session_id, setCurrentSessionId]);
 
   return (
-    <SidebarInset className="flex flex-col h-screen">
+    <SidebarInset className="flex flex-col h-svh overflow-hidden bg-background">
       <ChatInterface />
     </SidebarInset>
   );

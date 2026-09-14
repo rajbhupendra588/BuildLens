@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from "react";
 import { Message, SourceItem } from "@/types/chat";
+import { MessageMediaGallery } from "./message-media-gallery";
+import { documentFileUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -212,6 +214,10 @@ function scoreColor(score: number) {
 
 function SourceCard({ source }: { source: SourceItem }) {
   const [expanded, setExpanded] = useState(false);
+  const imagePreview =
+    source.is_image && source.document_id
+      ? documentFileUrl(source.document_id)
+      : null;
 
   const meta: string[] = [];
   if (source.page_number) meta.push(`Page ${source.page_number}`);
@@ -240,6 +246,16 @@ function SourceCard({ source }: { source: SourceItem }) {
       {meta.length > 0 && (
         <p className="text-muted-foreground truncate">{meta.join(" · ")}</p>
       )}
+
+      {imagePreview ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imagePreview}
+          alt={source.file_name}
+          className="mt-1 max-h-32 w-full rounded-md border object-contain bg-muted/50"
+          loading="lazy"
+        />
+      ) : null}
 
       {/* Snippet */}
       {source.snippet && (
@@ -296,7 +312,7 @@ function SourceCards({ sources }: { sources: SourceItem[] }) {
         {sources.length === 1 ? "1 source" : `${sources.length} sources`}
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {visible.map((src, i) => (
           <SourceCard key={i} source={src} />
         ))}
@@ -335,8 +351,8 @@ export function ChatMessageItem({ message }: { message: Message }) {
   // User message
   if (!isAi) {
     return (
-      <div className="flex w-full justify-end px-4 py-2">
-        <div className="max-w-[70%] min-w-0 rounded-3xl bg-secondary px-4 py-3 text-sm leading-relaxed text-secondary-foreground">
+      <div className="flex w-full justify-end py-2">
+        <div className="max-w-[min(720px,85%)] min-w-0 rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground shadow-sm">
           {message.content}
         </div>
       </div>
@@ -345,11 +361,10 @@ export function ChatMessageItem({ message }: { message: Message }) {
 
   // AI message
   return (
-    <div className="flex w-full gap-3 px-4 py-4">
-      {/* Avatar + mode badge stacked */}
+    <div className="flex w-full gap-3 py-4">
       <div className="flex flex-col items-center gap-1.5 shrink-0 mt-0.5">
-        <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Sparkles className="size-3.5" />
+        <div className="flex size-8 items-center justify-center rounded-lg border bg-card text-primary shadow-sm">
+          <Sparkles className="size-4" />
         </div>
         {/* {message.detectedMode && message.modeLabel && message.modeIcon && (
           <ModeBadge
@@ -361,8 +376,9 @@ export function ChatMessageItem({ message }: { message: Message }) {
       </div>
 
       {/* Content */}
-      <div className="min-w-0 flex-1 max-w-3xl">
-        <div className="text-sm leading-7 text-foreground">
+      <div className="min-w-0 flex-1">
+        <div className="rounded-xl border bg-card px-4 py-3 text-sm leading-7 text-foreground shadow-sm">
+          <MessageMediaGallery media={message.media ?? []} />
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{

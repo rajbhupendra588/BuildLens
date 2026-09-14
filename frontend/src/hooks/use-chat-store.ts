@@ -1,4 +1,5 @@
 import { ChatSession } from "@/types/chat";
+import { DEFAULT_CHAT_MODEL, DEFAULT_CHAT_PROVIDER } from "@/lib/chat-models";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -47,14 +48,14 @@ export const useChatStore = create<ChatState>()(
         })),
 
       // LLM model selection
-      selectedProvider: "ollama",
-      selectedModel: "",
+      selectedProvider: DEFAULT_CHAT_PROVIDER,
+      selectedModel: DEFAULT_CHAT_MODEL,
       setSelectedProvider: (provider) => set({ selectedProvider: provider }),
       setSelectedModel: (model) => set({ selectedModel: model }),
 
     }),
     {
-      name: "docrag-settings", // localStorage key
+      name: "buildlens-settings", // localStorage key
       partialize: (state) => ({
         selectedProvider: state.selectedProvider,
         selectedModel: state.selectedModel,

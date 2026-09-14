@@ -1,9 +1,11 @@
 import os
 import tempfile
+import threading
 from pathlib import Path
-from docling.document_converter import DocumentConverter
 from fastapi import UploadFile, HTTPException
 import uuid
+
+from app.core.config import settings
 
 # Extensions that Docling handles (returns DoclingDocument)
 _DOCLING_EXTENSIONS = {".pdf", ".docx", ".pptx", ".png", ".jpg", ".jpeg"}
@@ -50,18 +52,30 @@ ALL_ALLOWED = _DOCLING_EXTENSIONS | _TEXT_EXTENSIONS | _TABULAR_EXTENSIONS | _CO
 
 class FileService:
     def __init__(self):
-        self.converter = DocumentConverter()
-        self.max_file_size = 20 * 1024 * 1024  # 20 MB
+        self._converter = None
+        self.max_file_size = settings.STORAGE.MAX_UPLOAD_BYTES
+        # Docling/OCR is not safe to run concurrently in one process.
+        self._docling_lock = threading.Lock()
+
+    def _get_converter(self):
+        """Load Docling only when a file actually needs it (not on API startup)."""
+        if self._converter is None:
+            from docling.document_converter import DocumentConverter
+
+            print("[ingest] loading Docling converter")
+            self._converter = DocumentConverter()
+        return self._converter
 
     async def validate_file(self, file: UploadFile):
         """Ensure file size and extension are acceptable."""
         size = file.size if file.size else 0
-        if size > self.max_file_size:
-            raise HTTPException(status_code=403, detail="File too large (max 20 MB)")
+        if size and size > self.max_file_size:
+            limit = self._max_size_label()
+            raise HTTPException(status_code=413, detail=f"File too large (max {limit}).")
 
         ext = Path(file.filename).suffix.lower()
         # Allow files named 'Dockerfile' (no extension)
-        if file.filename.lower() == "dockerfile":
+        if file.filename and file.filename.lower() == "dockerfile":
             return
         if ext not in ALL_ALLOWED:
             raise HTTPException(
@@ -70,17 +84,46 @@ class FileService:
                        f"Supported: documents, images, spreadsheets, and source code.",
             )
 
+    def _max_size_label(self) -> str:
+        gb = self.max_file_size / (1024**3)
+        if gb >= 1 and gb == int(gb):
+            return f"{int(gb)} GB"
+        return f"{self.max_file_size / (1024**2):.0f} MB"
+
+    def process_stored_file(
+        self, path: Path, filename: str
+    ) -> tuple[bytes | object, str]:
+        """Convert an on-disk upload without duplicating bytes for Docling."""
+        ext = Path(filename).suffix.lower()
+
+        if ext in _DOCLING_EXTENSIONS:
+            try:
+                with self._docling_lock:
+                    result = self._get_converter().convert(path)
+                return result.document, "docling"
+            except Exception as e:
+                print(f"Docling conversion error for {filename}: {e}")
+                raise HTTPException(
+                    status_code=500, detail=f"Document conversion failed: {e}"
+                )
+
+        content = path.read_bytes()
+        return self.process_bytes(content, filename)
+
     async def process_file(self, file: UploadFile) -> tuple[bytes | object, str]:
+        content = await file.read()
+        return self.process_bytes(content, file.filename or "unnamed")
+
+    def process_bytes(self, content: bytes, filename: str) -> tuple[bytes | object, str]:
         """
-        Convert an uploaded file to either:
+        Convert file bytes to either:
           - raw bytes  (text / tabular / source-code paths)
           - DoclingDocument (PDF, DOCX, PPTX, images)
 
-        Returns (content, file_type) where file_type is one of:
-          'docling' | 'csv' | 'xlsx' | 'json' | 'text' | 'code'
+        Safe to call from a worker thread. Returns (content, file_type) where
+        file_type is one of: 'docling' | 'csv' | 'xlsx' | 'json' | 'text' | 'code'
         """
-        ext = Path(file.filename).suffix.lower()
-        content = await file.read()
+        ext = Path(filename).suffix.lower()
 
         # Tabular
         if ext == ".csv":
@@ -97,18 +140,19 @@ class FileService:
             return content, "text"
 
         # Source code
-        if ext in _CODE_EXTENSIONS or file.filename.lower() == "dockerfile":
+        if ext in _CODE_EXTENSIONS or filename.lower() == "dockerfile":
             return content, "code"
 
         # Docling path (PDF, DOCX, PPTX, images)
-        safe_name = f"docrag_{uuid.uuid4()}{ext}"
+        safe_name = f"buildlens_{uuid.uuid4()}{ext}"
         temp_path = Path(tempfile.gettempdir()) / safe_name
         try:
             temp_path.write_bytes(content)
-            result = self.converter.convert(temp_path)
+            with self._docling_lock:
+                result = self._get_converter().convert(temp_path)
             return result.document, "docling"
         except Exception as e:
-            print(f"Docling conversion error for {file.filename}: {e}")
+            print(f"Docling conversion error for {filename}: {e}")
             raise HTTPException(status_code=500, detail=f"Document conversion failed: {e}")
         finally:
             if temp_path.exists():

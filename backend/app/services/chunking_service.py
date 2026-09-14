@@ -69,11 +69,17 @@ class ChunkingService:
     OVERLAP = 200
 
     def __init__(self):
-        self.chunker = HybridChunker(
-            tokenizer=settings.CHUNK_TOKENIZER,
-            max_tokens=512,
-            merge_peers=True,
-        )
+        self._chunker = None
+
+    @property
+    def chunker(self):
+        if self._chunker is None:
+            self._chunker = HybridChunker(
+                tokenizer=settings.CHUNK_TOKENIZER,
+                max_tokens=512,
+                merge_peers=True,
+            )
+        return self._chunker
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -224,6 +230,13 @@ class ChunkingService:
                 else str(chunk)
             )
             token_count = self.chunker.tokenizer.count_tokens(text)
+            # HybridChunker can still emit oversize pieces; split so embed
+            # and the MiniLM tokenizer stay within 512 tokens.
+            if token_count > 512:
+                result.extend(
+                    self._simple_split(text, file_name, document_id, len(result))
+                )
+                continue
 
             meta: dict = {
                 "document_id": document_id,

@@ -1,6 +1,6 @@
-# DocRAG API Report
+# BuildLens API Report
 
-**Project:** DocRAG — Multimodal Self-Hosted RAG System  
+**Project:** BuildLens — Multimodal Self-Hosted RAG System  
 **Version:** 0.1.0  
 **Backend:** FastAPI (Python 3.14) | **Frontend:** Next.js 15+  
 **Generated:** 2026-02-23
@@ -11,7 +11,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                  DocRAG Stack                        │
+│                  BuildLens Stack                     │
 │                                                      │
 │  [Frontend: Next.js 15]  ←→  [Backend: FastAPI]      │
 │       localhost:3000           localhost:8000         │
@@ -41,7 +41,7 @@
 ```json
 {
   "status": "healthy",
-  "app_name": "DocRAG",
+  "app_name": "BuildLens",
   "app_version": "0.1.0",
   "python_version": "3.14.x",
   "environment": "development",
@@ -183,14 +183,14 @@ data: {"type": "done"}
 
 | Setting                  | Default                                  |
 | ------------------------ | ---------------------------------------- |
-| `APP_NAME`               | `DocRAG`                                 |
+| `APP_NAME`               | `BuildLens`                              |
 | `ENVIRONMENT`            | `development`                            |
 | `EMBED_MODEL`            | `sentence-transformers/all-MiniLM-L6-v2` |
 | `QDRANT.HOST`            | `qdrant`                                 |
 | `QDRANT.PORT`            | `6333`                                   |
-| `QDRANT.COLLECTION_NAME` | `doc_rag_knowledge`                      |
+| `QDRANT.COLLECTION_NAME` | `knowledge_base`                         |
 | `LLM.PROVIDER`           | `ollama`                                 |
 | `LLM.OLLAMA_BASE_URL`    | `http://localhost:11434`                 |
 | `DB.HOST`                | `localhost`                              |
 | `DB.PORT`                | `5432`                                   |
-| `DB.NAME`                | `docrag_db`                              |
+| `DB.NAME`                | `buildlens_db`                           |

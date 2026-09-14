@@ -1,13 +1,13 @@
-# DocRAG - CLAUDE.md
+# BuildLens - CLAUDE.md
 
 ## Project Overview
 
-DocRAG is an open-source Retrieval-Augmented Generation (RAG) engine for multimodal document processing. Users can chat with PDFs, Excel sheets, PlantUML diagrams, and images using local (Ollama) or cloud LLMs (OpenAI, Gemini, Anthropic), with a self-hosted architecture for data privacy.
+BuildLens is an open-source Retrieval-Augmented Generation (RAG) engine for multimodal document processing. Users can chat with PDFs, Excel sheets, PlantUML diagrams, and images using local (Ollama) or cloud LLMs (OpenAI, Gemini, Anthropic), with a self-hosted architecture for data privacy.
 
 ## Architecture
 
 ```
-DocRAG/
+BuildLens/
 ├── backend/          # FastAPI (Python)
 ├── frontend/         # Next.js (TypeScript)
 ├── postgres_data/    # PostgreSQL persistence (gitignored)
@@ -110,13 +110,13 @@ Configure via `.env` (copy from `.env.example`):
 
 ```bash
 # App
-APP_NAME=DocRAG
+APP_NAME=BuildLens
 ENVIRONMENT=development
 
 # PostgreSQL (nested with __ delimiter)
 DB__USER=postgres
 DB__PASSWORD=password
-DB__NAME=docrag_db
+DB__NAME=buildlens_db
 DB__HOST=postgres        # 'postgres' inside Docker, 'localhost' outside
 DB__PORT=5432
 

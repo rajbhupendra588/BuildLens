@@ -1,11 +1,11 @@
 ====================================================================
-  DocRAG — System Overview Report
+  BuildLens — System Overview Report
   Generated: 2026-02-23
 ====================================================================
 
 PROJECT SUMMARY
 ---------------
-DocRAG is a multimodal, self-hosted Retrieval-Augmented Generation
+BuildLens is a multimodal, self-hosted Retrieval-Augmented Generation
 (RAG) system. It allows users to upload documents and images, which
 are indexed into a vector database, and then chat with an LLM that
 answers questions grounded in those documents.
@@ -123,13 +123,13 @@ SUPPORTED FILE TYPES
 ====================================================================
 CONFIGURATION (Environment Variables)
 ====================================================================
-  APP_NAME                 = DocRAG
+  APP_NAME                 = BuildLens
   ENVIRONMENT              = development | production | test
   EMBED_MODEL              = sentence-transformers/all-MiniLM-L6-v2
 
   QDRANT__HOST             = qdrant
   QDRANT__PORT             = 6333
-  QDRANT__COLLECTION_NAME  = doc_rag_knowledge
+  QDRANT__COLLECTION_NAME  = knowledge_base
 
   LLM__PROVIDER            = ollama | openai | anthropic | gemini
   LLM__OLLAMA_BASE_URL     = http://localhost:11434
@@ -141,7 +141,7 @@ CONFIGURATION (Environment Variables)
   DB__PASSWORD             = password
   DB__HOST                 = localhost
   DB__PORT                 = 5432
-  DB__NAME                 = docrag_db
+  DB__NAME                 = buildlens_db
 
 ====================================================================
 END OF REPORT

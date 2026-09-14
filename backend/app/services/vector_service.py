@@ -1,40 +1,59 @@
+import os
+from pathlib import Path
+
 from app.core.config import settings
-import uuid
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from fastembed import TextEmbedding
+
+# Persist across restarts (Docker volume). Default /tmp re-downloads ~520MB each time.
+FASTEMBED_CACHE_DIR = Path(
+    os.environ.get("FASTEMBED_CACHE_DIR", "/app/.cache/fastembed")
+)
 
 
 class VectorService:
-    _model: TextEmbedding | None = None
+    _model = None
 
     def __init__(self):
         self.client = QdrantClient(host=settings.QDRANT.HOST, port=settings.QDRANT.PORT)
         self.collection_name = settings.QDRANT.COLLECTION_NAME
-
-        if VectorService._model is None:
-            VectorService._model = TextEmbedding(model_name=settings.EMBED_MODEL)
-
-        self.model = VectorService._model
         self._ensure_collection()
 
-    def _ensure_collection(self):
-        """Create collection if it does not exist.
-        If it already exists but has a different vector size (e.g. after
-        switching the embedding model), log a clear warning instead of
-        silently breaking — user must clear the DB from Settings → Storage.
-        """
-        if not self.client.collection_exists(self.collection_name):
-            self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=VectorParams(
-                    size=self.model.embedding_size,
-                    distance=Distance.COSINE,
-                ),
-            )
-            return
+    @property
+    def model(self):
+        if VectorService._model is None:
+            from fastembed import TextEmbedding
 
+            FASTEMBED_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            print(
+                f"[embed] loading {settings.EMBED_MODEL} "
+                f"(cache={FASTEMBED_CACHE_DIR})"
+            )
+            VectorService._model = TextEmbedding(
+                model_name=settings.EMBED_MODEL,
+                cache_dir=str(FASTEMBED_CACHE_DIR),
+                threads=1,
+                lazy_load=True,
+            )
+            self._warn_if_size_mismatch()
+        return VectorService._model
+
+    def _ensure_collection(self):
+        """Create collection if missing. Do not load the embed model just to check."""
+        if self.client.collection_exists(self.collection_name):
+            return
+        self.client.create_collection(
+            collection_name=self.collection_name,
+            vectors_config=VectorParams(
+                size=self.model.embedding_size,
+                distance=Distance.COSINE,
+            ),
+        )
+
+    def _warn_if_size_mismatch(self):
+        if not self.client.collection_exists(self.collection_name):
+            return
         info = self.client.get_collection(self.collection_name)
         existing_size = info.config.params.vectors.size
         if existing_size != self.model.embedding_size:
@@ -47,24 +66,30 @@ class VectorService:
                 f"{'='*60}\n"
             )
 
-    def upsert_chunks(self, chunks: List[Dict[str, Any]]):
-        """Embed and upsert chunks. Uses embed() which adds document prefix for nomic."""
-        texts = [c["content"] for c in chunks]
-        embeddings = list(self.model.embed(texts))
+    def upsert_chunks(self, chunks: List[Dict[str, Any]], batch_size: int = 8):
+        """Embed and upsert chunks in small batches to avoid OOM in Docker."""
+        total = len(chunks)
+        for start in range(0, len(chunks), batch_size):
+            done = min(start + batch_size, total)
+            if start == 0 or done == total or done % 80 == 0:
+                print(f"[ingest] embedding {done}/{total} chunks")
+            batch = chunks[start : start + batch_size]
+            texts = [c["content"] for c in batch]
+            embeddings = list(self.model.embed(texts))
 
-        points = [
-            PointStruct(
-                id=chunk["id"],
-                vector=embeddings[i].tolist(),
-                payload={
-                    "content": chunk["content"],
-                    "metadata": chunk["metadata"],
-                },
-            )
-            for i, chunk in enumerate(chunks)
-        ]
+            points = [
+                PointStruct(
+                    id=chunk["id"],
+                    vector=embeddings[i].tolist(),
+                    payload={
+                        "content": chunk["content"],
+                        "metadata": chunk["metadata"],
+                    },
+                )
+                for i, chunk in enumerate(batch)
+            ]
 
-        self.client.upsert(collection_name=self.collection_name, points=points)
+            self.client.upsert(collection_name=self.collection_name, points=points)
         return True
 
     def get_stats(self) -> dict:

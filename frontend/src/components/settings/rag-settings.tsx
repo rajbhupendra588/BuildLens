@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, logApiError } from "@/lib/api";
 import { AppSettings } from "@/types/settings";
 import { toast } from "sonner";
 
@@ -26,10 +26,15 @@ export function RagSettings() {
   const [threshold, setThreshold] = useState(0.3);
 
   useEffect(() => {
-    apiRequest<AppSettings>("/settings").then((data) => {
-      if (data["rag_top_k"]) setTopK(parseInt(data["rag_top_k"] as string, 10));
-      if (data["rag_score_threshold"]) setThreshold(parseFloat(data["rag_score_threshold"] as string));
-    });
+    apiRequest<AppSettings>("/settings")
+      .then((data) => {
+        if (data["rag_top_k"]) setTopK(parseInt(data["rag_top_k"] as string, 10));
+        if (data["rag_score_threshold"])
+          setThreshold(parseFloat(data["rag_score_threshold"] as string));
+      })
+      .catch((error) => {
+        logApiError("Failed to load RAG settings", error);
+      });
   }, []);
 
   const handleTopKBlur = async () => {

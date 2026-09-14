@@ -1,14 +1,84 @@
+import re
 from typing import List, Dict, Any
 from app.core.config import settings
 from app.services.vector_service import vector_service
 from qdrant_client import models
 
+# Meta-questions about the KB itself (file count, list uploads) — not document content.
+_INVENTORY_QUERY = re.compile(
+    r"(?i)("
+    r"how\s+many\s+(?:documents?|files?|pdfs?|items?|uploads?|things?)"
+    r"|how\s+many\s+.*\bknowledge\s*bases?\b"
+    r"|how\s+many\b.*\b(?:in|indexed|uploaded)"
+    r"|what\s+(?:documents?|files?)\s+(?:are|do\s+i\s+have|in|uploaded|indexed)"
+    r"|list\s+(?:all\s+)?(?:my\s+)?(?:documents?|files?|uploads?)"
+    r"|what\s+(?:is|are)\s+in\s+(?:my\s+)?knowledge\s*base"
+    r"|what\s+(?:documents?|files?)\s+(?:are\s+)?(?:in\s+)?(?:my\s+)?knowledge\s*base"
+    r"|\bknowledge\s*base\b.*\b(?:how\s+many|count|number\s+of|list|what\s+files?)"
+    r")",
+)
+
 
 class RetrievalService:
     def __init__(self):
         self.client = vector_service.client
-        self.model = vector_service.model
         self.collection_name = settings.QDRANT.COLLECTION_NAME
+
+    @property
+    def model(self):
+        return vector_service.model
+
+    def is_knowledge_base_inventory_query(self, query: str) -> bool:
+        return bool(_INVENTORY_QUERY.search(query.strip()))
+
+    def build_inventory_context_chunks(
+        self,
+        documents: List[Dict[str, str]],
+        total_chunks: int,
+    ) -> List[Dict[str, Any]]:
+        """Authoritative context for questions about indexed files (not chunk content)."""
+        if not documents:
+            return [
+                {
+                    "content": "The knowledge base is empty. No files are indexed.",
+                    "score": 1.0,
+                    "metadata": {
+                        "file_name": "Knowledge base inventory",
+                        "element_type": "inventory",
+                    },
+                }
+            ]
+
+        names = [d["file_name"] for d in documents]
+        summary = (
+            "Knowledge base inventory (complete list — use this for file counts):\n"
+            f"- Total indexed files: {len(documents)}\n"
+            f"- Total text chunks: {total_chunks}\n"
+            f"- Every indexed file name: " + "; ".join(names)
+        )
+        chunks: List[Dict[str, Any]] = [
+            {
+                "content": summary,
+                "score": 1.0,
+                "metadata": {
+                    "file_name": "Knowledge base inventory",
+                    "element_type": "inventory",
+                },
+            }
+        ]
+        for doc in documents:
+            chunks.append(
+                {
+                    "content": f"Indexed file: {doc['file_name']}",
+                    "score": 1.0,
+                    "metadata": {
+                        "file_name": doc["file_name"],
+                        "document_id": doc["document_id"],
+                        "element_type": "inventory",
+                    },
+                }
+            )
+        return chunks
 
     async def search(self, query: str, limit: int = 5, min_score: float = 0.3) -> List[Dict[str, Any]]:
         """Semantic search for relevant chunks.
@@ -59,8 +129,8 @@ class RetrievalService:
 
         return "\n\n".join(parts)
 
-    async def list_indexed_documents(self):
-        docs: dict[str, str] = {}
+    def _list_indexed_documents_sync(self) -> list[dict[str, Any]]:
+        docs: dict[str, dict[str, Any]] = {}
         offset = None
         while True:
             results, next_offset = self.client.scroll(
@@ -73,13 +143,25 @@ class RetrievalService:
             for point in results:
                 meta = point.payload.get("metadata") or {}
                 doc_id = meta.get("document_id")
-                if doc_id and doc_id not in docs:
-                    docs[doc_id] = meta.get("file_name", "unknown")
+                if not doc_id:
+                    continue
+                if doc_id not in docs:
+                    docs[doc_id] = {
+                        "document_id": doc_id,
+                        "file_name": meta.get("file_name", "unknown"),
+                        "chunk_count": 0,
+                    }
+                docs[doc_id]["chunk_count"] += 1
             if next_offset is None:
                 break
             offset = next_offset
 
-        return [{"document_id": k, "file_name": v} for k, v in docs.items()]
+        return list(docs.values())
+
+    async def list_indexed_documents(self):
+        import asyncio
+
+        return await asyncio.to_thread(self._list_indexed_documents_sync)
 
     async def delete_document_by_id(self, document_id: str):
         return self.client.delete(

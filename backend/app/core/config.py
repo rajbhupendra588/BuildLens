@@ -9,7 +9,7 @@ class QdrantSettings(BaseSettings):
     """Configuration for the Vector Database."""
     HOST: str = "qdrant"
     PORT: int = 6333
-    COLLECTION_NAME: str = "doc_rag_knowledge"
+    COLLECTION_NAME: str = "knowledge_base"
 
 class LLMSettings(BaseSettings):
     """Configuration for AI Providers."""
@@ -19,13 +19,34 @@ class LLMSettings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
 
+class IngestSettings(BaseSettings):
+    """Fast session preview vs full Docling pipeline."""
+    QUICK_EXTRACT_MAX_CHARS: int = 120_000
+    QUICK_PDF_MAX_PAGES: int = 20
+    QUICK_XLSX_MAX_ROWS: int = 200
+    # PDFs under this size try pypdf text first (seconds). Docling only if text is empty.
+    FAST_PDF_MAX_BYTES: int = 50 * 1024 * 1024
+    FAST_PDF_MIN_TEXT_CHARS: int = 80
+    FAST_INDEX_MAX_CHARS: int = 800_000
+    FAST_DOCX_MAX_BYTES: int = 15 * 1024 * 1024
+
+
+class StorageSettings(BaseSettings):
+    """On-disk storage for original uploaded files (images, PDFs, etc.)."""
+    UPLOAD_DIR: str = "uploads_data"
+    # Max upload size (bytes). Default 1 GiB.
+    MAX_UPLOAD_BYTES: int = 1024 * 1024 * 1024
+    # Stream read/write chunk size while saving uploads (8 MiB).
+    UPLOAD_STREAM_CHUNK_BYTES: int = 8 * 1024 * 1024
+
+
 class DatabaseSettings(BaseSettings):
     """Configuration for PostgreSQL."""
     USER: str = "postgres"
     PASSWORD: str = "password"
     HOST: str = "localhost"
     PORT: int = 5432
-    NAME: str = "docrag_db"
+    NAME: str = "buildlens_db"
 
     @property
     def URL(self) -> str:
@@ -34,7 +55,7 @@ class DatabaseSettings(BaseSettings):
 class Settings(BaseSettings):
     """Global Application Settings."""
     # App Config
-    APP_NAME: str = "DocRAG"
+    APP_NAME: str = "BuildLens"
     ENVIRONMENT: Literal["development", "production", "test"] = "development"
 
     # Embedding model – nomic has 8 192-token context window and 768 dims.
@@ -51,6 +72,8 @@ class Settings(BaseSettings):
     QDRANT: QdrantSettings = QdrantSettings()
     LLM: LLMSettings = LLMSettings()
     DB: DatabaseSettings = DatabaseSettings()
+    STORAGE: StorageSettings = StorageSettings()
+    INGEST: IngestSettings = IngestSettings()
 
     model_config = SettingsConfigDict(
         env_file=DOTENV_PATH if DOTENV_PATH.exists() else None,

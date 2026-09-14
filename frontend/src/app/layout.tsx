@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { CSSProperties } from "react";
+import { Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { GlobalUploadIndicator } from "@/components/global-upload-indicator";
 
-const geistSans = Geist({
+const inter = Inter({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
@@ -17,8 +19,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DocRAG",
-  description: "AI-powered document question answering",
+  title: "BuildLens · Document Workspace",
+  description:
+    "Enterprise document intelligence—chat with your PDFs using grounded, cited answers.",
 };
 
 export default function RootLayout({
@@ -29,14 +32,21 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${geistMono.variable} antialiased`}
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <SidebarProvider>
+          <SidebarProvider
+            style={
+              {
+                "--sidebar-width": "18rem",
+              } as CSSProperties
+            }
+          >
             <AppSidebar />
             {children}
           </SidebarProvider>
 
+          <GlobalUploadIndicator />
           <Toaster />
         </ThemeProvider>
       </body>

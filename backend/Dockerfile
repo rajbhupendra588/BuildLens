@@ -20,6 +20,9 @@ RUN --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
+# quick_extract_service (session fast preview)
+RUN uv pip install --python /app/.venv/bin/python 'pypdf>=5.9.0'
+
 # Stage 2: Runtime
 FROM python:3.14-slim
 WORKDIR /app

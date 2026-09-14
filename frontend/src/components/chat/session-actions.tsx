@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useChatStore } from "@/hooks/use-chat-store";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, logApiError } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import {
   AlertDialog,
@@ -51,7 +51,7 @@ export function SessionActions({
         router.push("/");
       }
     } catch (error) {
-      console.error("Failed to delete session", error);
+      logApiError("Failed to delete session", error);
     }
   };
 
@@ -68,7 +68,7 @@ export function SessionActions({
       updateSessionTitle(sessionId, newTitle);
       setIsRenameOpen(false);
     } catch (error) {
-      console.error("Failed to rename session", error);
+      logApiError("Failed to rename session", error);
     } finally {
       setIsLoading(false);
     }
