@@ -1,258 +1,271 @@
-# BuildLens: Multimodal Self-Hosted RAG System
+# BuildLens — User Tutorial
 
-**BuildLens** is an open-source Retrieval-Augmented Generation (RAG) platform for multimodal documents. Index PDFs, spreadsheets, diagrams, images, and source files; query them through a chat interface backed by local or cloud language models, with vectors and chat data under your control.
+**BuildLens** is a self-hosted app for chatting with your documents. Upload PDFs, spreadsheets, images, and code; BuildLens indexes them locally, retrieves relevant passages, and answers your questions with citations—using **Ollama on your machine** or **cloud LLMs** you configure.
 
-## Key Features
+This guide walks you from zero to your first grounded answer.
 
-- **Multimodal Document Processing**: Upload individual files or drag-and-drop entire folders from the **Library** or attach files in **Chat**. Supports PDF, DOCX, PPTX, images, CSV, XLSX, JSON, TXT, MD, PUML, and source code.
-- **Fast + full indexing**: Text PDFs use a **pypdf fast path** (seconds); scanned PDFs and images fall back to **Docling**. Session uploads get a **quick preview** for immediate chat while full vector indexing runs in the background.
-- **Self-Hosted Data Privacy**: Vector storage (Qdrant), chat history (PostgreSQL), and original uploads (`uploads_data/`) stay on your machine. Use **Ollama** for a fully local LLM path.
-- **Cloud LLM Support**: OpenAI, Gemini, Anthropic, **OpenRouter**, and other providers. API keys are stored in PostgreSQL via the Settings UI.
-- **Grounded answers**: Retrieval over Qdrant with cited sources, optional session attachments, and SSE streaming in the chat UI.
+---
 
-## System Architecture
+## What you need
 
-Modular monorepo deployed with Docker Compose:
+| Requirement | Notes |
+| ----------- | ----- |
+| **Docker** + **Docker Compose** | Easiest way to run the full stack |
+| **~4 GB RAM** for the API container | Embeddings load on first ingest/search; models are cached after that |
+| **An LLM** | [Ollama](https://ollama.com) (recommended for privacy) or an API key for OpenAI, Gemini, Anthropic, OpenRouter |
 
-| Layer | Technology | Role |
-| ----- | ---------- | ---- |
-| **Frontend** | Next.js 16 (App Router), TypeScript, Zustand, shadcn/ui | Chat, Library, Settings; calls API via `lib/api.ts` (REST + SSE) |
-| **Backend** | FastAPI, Python 3.14, `uv`, SQLModel | Ingest, chunk, embed, retrieve, LLM orchestration |
-| **Vector DB** | Qdrant v1.17.0 | Chunk embeddings + metadata (cosine search) |
-| **Database** | PostgreSQL 16 | Sessions, messages, app settings, session attachments |
-| **Storage** | `uploads_data/` (bind mount) | Original files for preview/download |
-| **Model cache** | Docker volume `backend_model_cache` | FastEmbed ONNX weights (persisted across API restarts) |
+Optional: Git, to clone the repository.
 
-### Deployment diagram
+---
 
-```mermaid
-flowchart TB
-  subgraph Host["Developer machine / server"]
-    Browser["Browser :3000"]
+## Step 1 — Install and start BuildLens
 
-    subgraph Docker["Docker Compose — buildlens-net"]
-      UI["buildlens-ui<br/>Next.js dev :3000"]
-      API["buildlens-api<br/>FastAPI :8000"]
-      PG["buildlens-postgres<br/>PostgreSQL :5432"]
-      QD["buildlens-vector-db<br/>Qdrant :6333 / :6334"]
-    end
-
-    VolUploads[("uploads_data/")]
-    VolPG[("postgres_data/")]
-    VolQD[("qdrant_data/")]
-    VolCache[("backend_model_cache")]
-    VolVenv[("backend_venv")]
-  end
-
-  Ollama["Ollama / Cloud LLMs<br/>(host or internet)"]
-
-  Browser --> UI
-  UI -->|"REST + SSE<br/>NEXT_PUBLIC_API_URL"| API
-  API --> PG
-  API --> QD
-  API --> VolUploads
-  API --> VolCache
-  PG --> VolPG
-  QD --> VolQD
-  API --> VolVenv
-  API --> Ollama
-```
-
-### Backend service map
-
-```mermaid
-flowchart LR
-  subgraph API["FastAPI /api/v1"]
-    ingest["ingest"]
-    chat["chat"]
-    docs["documents"]
-    query["query"]
-    models["models"]
-    settings["settings"]
-    data["data"]
-  end
-
-  subgraph Services["Services"]
-    FS["file_service<br/>(Docling lazy)"]
-    QE["quick_extract / fast_ingest<br/>(pypdf fast path)"]
-    CH["chunking_service<br/>(HybridChunker 512 tok)"]
-    VS["vector_service<br/>(FastEmbed + Qdrant)"]
-    RS["retrieval_service"]
-    LLM["llm_service"]
-    CHS["chat_history_service"]
-  end
-
-  ingest --> FS
-  ingest --> QE
-  ingest --> CH
-  ingest --> VS
-  chat --> CHS
-  chat --> RS
-  chat --> LLM
-  query --> RS
-  docs --> RS
-  RS --> VS
-  VS --> QD[("Qdrant")]
-  CHS --> PG[("PostgreSQL")]
-  settings --> PG
-```
-
-## Document Ingest Flow
-
-Uploads are **async**: the API saves the file, returns a `job_id`, and processes in a background task (one ingest at a time via semaphore).
-
-```mermaid
-flowchart TD
-  Start([User uploads file]) --> Upload["POST /api/v1/ingest/upload"]
-  Upload --> Save["Stream to uploads_data/{document_id}"]
-  Save --> Job["Create job: queued"]
-  Job --> BG["Background: _run_ingest_job"]
-
-  BG --> Session{session_id<br/>provided?}
-  Session -->|Yes| Quick["Quick extract<br/>(pypdf / text / docx…)"]
-  Quick --> Attach["Session attachment<br/>status: quick_ready"]
-  Attach --> PollChat["UI polls job → chat early"]
-
-  Session -->|No| ProcLib["status: processing"]
-  PollChat --> Index
-  ProcLib --> Index
-
-  Index["Full index: _index_document_on_disk"]
-  Index --> Fast{Fast text path<br/>pypdf / docx?}
-  Fast -->|Yes| Text["Extract text"]
-  Fast -->|No| Docling["Docling convert<br/>(PDF OCR, images, PPTX…)"]
-  Text --> Chunk["chunking_service.split_content"]
-  Docling --> Chunk
-  Chunk --> Embed["vector_service.upsert_chunks<br/>(batches → Qdrant)"]
-  Embed --> Done["job: success"]
-  Done --> Library["Library refresh / documents API"]
-```
-
-**Paths on disk**
-
-| Path | Purpose |
-| ---- | ------- |
-| `uploads_data/` | Original uploaded bytes |
-| `qdrant_data/` | Vector index |
-| `postgres_data/` | Sessions, messages, settings |
-| `backend_model_cache` (volume) | `nomic-ai/nomic-embed-text-v1.5` ONNX cache |
-
-## Chat and RAG Sequence
-
-Streaming uses **GET `/api/v1/chat/ask-stream`** (Server-Sent Events). The browser loads history via REST; each question triggers retrieve-then-generate on the server.
-
-```mermaid
-sequenceDiagram
-  actor User
-  participant UI as Next.js UI
-  participant API as FastAPI
-  participant PG as PostgreSQL
-  participant QD as Qdrant
-  participant Emb as FastEmbed
-  participant LLM as LLM provider
-
-  User->>UI: Send message
-  UI->>API: GET /chat/ask-stream?question&session_id&provider&model
-  API->>PG: Save user message
-  API->>PG: Load recent history (limit 10)
-  API->>API: Session attachment chunks (if any)
-
-  alt Inventory question
-    API->>QD: Scroll / list indexed docs
-    API->>API: Build inventory context
-  else Document RAG question
-    API->>Emb: query_embed(question)
-    Emb-->>API: query vector
-    API->>QD: similarity search (top_k, threshold)
-    QD-->>API: ranked chunks + metadata
-  end
-
-  API->>API: Merge session + vector context, intent, sources
-  API-->>UI: SSE: sources, media, intent
-  loop Stream tokens
-    API->>LLM: generate_answer_stream(context + history)
-    LLM-->>API: token chunk
-    API-->>UI: SSE: content
-  end
-  API->>PG: Save assistant message + sources + mode
-  UI-->>User: Render markdown + citations
-```
-
-## Quick Start (Docker)
-
-BuildLens is fully containerized. Ensure **Docker** and **Docker Compose** are installed.
-
-1. **Clone the repository:**
+1. **Clone the project** (or download and unzip):
 
    ```bash
-   git clone https://github.com/tharitthaveekittikul/DocRAG
-   cd DocRAG
+   git clone https://github.com/rajbhupendra588/BuildLens.git
+   cd BuildLens
    ```
 
-2. **Setup environment variables:**
+2. **Create your environment file:**
 
    ```bash
    cp .env.example .env
    ```
 
-   Set `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1` for browser access when using Docker.
+   For Docker, keep the defaults unless you know you need to change them. Important values:
 
-3. **Launch the stack:**
+   - `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1` — how the browser reaches the API
+   - `LLM__OLLAMA_BASE_URL=http://host.docker.internal:11434` — Ollama on your Mac/Windows host from inside Docker
+
+3. **Start everything:**
 
    ```bash
    docker compose up --build
    ```
 
-4. **Access the application:**
-   - **Frontend UI:** http://localhost:3000
-   - **Library:** http://localhost:3000/library
-   - **Backend API docs:** http://localhost:8000/docs
-   - **Qdrant dashboard:** http://localhost:6333/dashboard
+   Wait until the frontend, API, Postgres, and Qdrant are up (first build can take several minutes).
 
-The API container is limited to **4 GB RAM / 2 CPUs** by default; embedding models load on first search/ingest and are cached in the `backend_model_cache` volume.
+4. **Open the app:**
 
-## Local Development
+   | URL | Purpose |
+   | --- | ------- |
+   | http://localhost:3000 | Chat (home) |
+   | http://localhost:3000/library | Document library |
+   | http://localhost:3000/settings | LLM keys, retrieval, storage |
+   | http://localhost:8000/docs | API reference (developers) |
 
-### Backend
+To stop: `Ctrl+C`, then `docker compose down`. Your data stays in `postgres_data/`, `qdrant_data/`, and `uploads_data/` on disk.
 
-1. `cd backend`
-2. `uv sync`
-3. Start Qdrant + Postgres: `docker compose up -d qdrant postgres`
-4. Run:
+---
+
+## Step 2 — Connect a language model
+
+BuildLens does not ship a built-in model; it calls **your** LLM after retrieving text from your files.
+
+### Option A — Ollama (local, private)
+
+1. Install [Ollama](https://ollama.com) on your **host** machine (not inside the BuildLens containers).
+2. Pull a model, for example:
 
    ```bash
-   uv run uvicorn app.main:app --reload --port 8000
+   ollama pull llama3.2
    ```
 
-   Use `DB__HOST=localhost`, `QDRANT__HOST=localhost` in `.env` when not inside Docker.
+3. Ensure Ollama is running (`ollama serve` if needed).
+4. In BuildLens, open **Settings → AI Providers**, confirm the Ollama URL matches your setup (Docker default: `http://host.docker.internal:11434`), and use **Test connection**.
+5. In the chat sidebar, pick **Ollama** and your model from the model dropdown.
 
-### Frontend
+### Option B — Cloud providers
 
-1. `cd frontend`
-2. `npm install`
-3. `npm run dev`
+1. Open **Settings → AI Providers**.
+2. Enter and save API keys for **OpenAI**, **Gemini**, **Anthropic**, or **OpenRouter** as needed.
+3. Use **Test** on each key before chatting.
+4. Select that provider and model in the chat UI.
 
-## Supported Document Types
+Keys saved in Settings are stored in your **local PostgreSQL** database, not sent to third parties except when you actually chat.
 
-Default max upload size is **1 GB** (see Settings → Storage / `STORAGE__MAX_UPLOAD_BYTES`).
+---
 
-| Format | Processing |
-| ------ | ---------- |
-| **PDF** (text) | pypdf fast path → chunk → embed |
-| **PDF** (scanned) / **images** / **DOCX** / **PPTX** | Docling (loaded on demand) |
-| **CSV, XLSX** | pandas → text |
-| **JSON, TXT, MD, PUML, source code** | Direct read + language-aware chunking |
+## Step 3 — Add documents to your knowledge base
 
-Embeddings: **FastEmbed** with `nomic-ai/nomic-embed-text-v1.5` (768-dim). Chunking: **HybridChunker**, max **512 tokens** per chunk.
+The **Library** is your long-lived index: files here are chunked, embedded, and searchable across all chat sessions.
 
-## Supported LLM Providers
+1. Go to **Library** (http://localhost:3000/library).
+2. **Drag and drop** files or folders onto the drop zone, or use the file picker.
+3. Watch upload progress. Indexing runs **in the background**; large or scanned PDFs can take longer (Docling/OCR).
+4. When indexing finishes, the file appears in the list. You can open previews where supported and remove files you no longer need.
 
-Configure providers and API keys in **Settings**. Defaults can still come from `.env` (`LLM__PROVIDER`, `LLM__OLLAMA_BASE_URL`, etc.).
+**Limits (defaults):**
 
-- **Ollama** (local, default in `.env.example`)
-- **OpenAI**, **Gemini**, **Anthropic**
-- **OpenRouter** and additional cloud routes used by the chat model picker
+| Limit | Default | Change via |
+| ----- | ------- | ---------- |
+| Max size **per file** | **20 MB** | `STORAGE__MAX_UPLOAD_BYTES` in `.env` (restart backend). If you raise it, update the matching constant in `frontend/src/lib/document-upload.ts`. |
+| Max files in **Library** | **5** | `STORAGE__MAX_LIBRARY_FILES` |
+| Max **session attachments** in chat | **5** | `STORAGE__MAX_SESSION_ATTACHMENTS` |
+
+**Supported formats:**
+
+| Format | What happens |
+| ------ | -------------- |
+| PDF (text) | Fast text extraction, then chunk → embed |
+| PDF (scanned), images, DOCX, PPTX | Docling (heavier; first use may download models) |
+| CSV, XLSX | Converted to text via pandas |
+| JSON, TXT, MD, PUML, source code | Read directly, language-aware chunking |
+
+Embeddings use **FastEmbed** (`nomic-ai/nomic-embed-text-v1.5`, 768 dimensions). Chunks are capped at **512 tokens**.
+
+---
+
+## Step 4 — Chat with your documents
+
+1. Open **Chat** (http://localhost:3000).
+2. **New chat** from the sidebar (sessions are saved in Postgres).
+3. Ask a question about material in your **Library**, for example: *“What are the main risks in the Q3 report?”*
+4. BuildLens **retrieves** similar chunks from Qdrant, **streams** the answer (SSE), and shows **sources** you can expand.
+
+### Session-only attachments (optional)
+
+You can attach files **to one chat** without adding them to the Library:
+
+- Use the attachment control in the chat input.
+- BuildLens can show a **quick preview** quickly while full indexing continues in the background.
+- Good for one-off PDFs; the **Library** is better for documents you want in every session.
+
+Pick provider and model in the sidebar before sending messages.
+
+---
+
+## Step 5 — Tune behavior in Settings
+
+| Section | What you can do |
+| ------- | ---------------- |
+| **AI Providers** | Ollama URL, cloud API keys, defaults |
+| **RAG Retrieval** | How many chunks to fetch (top-K), similarity threshold |
+| **Storage** | View indexed file/chunk counts; **clear vector DB** or **chat history** (destructive—confirm in the dialog) |
+| **Preferences** | Theme; export/import chat history |
+
+If you change the embedding model in config, clear the vector store in **Storage** and re-index documents so dimensions stay consistent.
+
+---
+
+## How it works (short)
+
+```mermaid
+flowchart LR
+  You[You] --> UI[BuildLens UI]
+  UI --> API[FastAPI API]
+  API --> PG[(PostgreSQL)]
+  API --> QD[(Qdrant)]
+  API --> Files[(uploads_data/)]
+  API --> LLM[Ollama or cloud LLM]
+```
+
+1. **Upload** → file saved under `uploads_data/`, job queued.
+2. **Ingest** → extract text → chunk → embed → store in Qdrant.
+3. **Question** → embed query → search Qdrant → build context → LLM stream → save message + citations.
+
+Uploads are **async**: the API returns a job id; the UI polls until indexing completes. Only **one full ingest** runs at a time to keep memory predictable.
+
+---
+
+## Troubleshooting
+
+| Problem | Things to try |
+| ------- | ------------- |
+| Chat says model unavailable | Ollama running on host? Correct URL in Settings? Model pulled (`ollama list`)? |
+| “File too large” | Default **20 MB** per file; increase `STORAGE__MAX_UPLOAD_BYTES` and frontend limit together. |
+| Library full | Remove a file or raise `STORAGE__MAX_LIBRARY_FILES`. |
+| Slow first PDF/image | Docling/OCR is CPU-heavy; API container has 4 GB / 2 CPU by default in `docker-compose.yml`. |
+| UI cannot reach API | `NEXT_PUBLIC_API_URL` must be reachable **from your browser** (usually `http://localhost:8000/api/v1`). |
+| Empty answers, no sources | Confirm files finished indexing; try a more specific question; check **RAG Retrieval** thresholds in Settings. |
+
+Health check: `GET http://localhost:8000/api/v1/health` (DB + Qdrant status).
+
+---
+
+## Local development (optional)
+
+If you prefer running the API or UI on the host while keeping databases in Docker:
+
+**Backend**
+
+```bash
+cd backend
+uv sync
+docker compose up -d qdrant postgres
+# In .env: DB__HOST=localhost, QDRANT__HOST=localhost
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+**Frontend**
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+See [frontend/README.md](frontend/README.md) for UI-only commands.
+
+---
+
+## Architecture reference
+
+<details>
+<summary>Deployment and ingest diagrams (for contributors)</summary>
+
+### Deployment
+
+```mermaid
+flowchart TB
+  subgraph Host["Developer machine / server"]
+    Browser["Browser :3000"]
+    subgraph Docker["Docker Compose — buildlens-net"]
+      UI["buildlens-ui<br/>Next.js :3000"]
+      API["buildlens-api<br/>FastAPI :8000"]
+      PG["buildlens-postgres<br/>PostgreSQL :5432"]
+      QD["buildlens-vector-db<br/>Qdrant :6333"]
+    end
+    VolUploads[("uploads_data/")]
+    VolPG[("postgres_data/")]
+    VolQD[("qdrant_data/")]
+    VolCache[("backend_model_cache")]
+  end
+  Ollama["Ollama / Cloud LLMs"]
+  Browser --> UI
+  UI --> API
+  API --> PG
+  API --> QD
+  API --> VolUploads
+  API --> VolCache
+  API --> Ollama
+```
+
+### Data on disk
+
+| Path | Purpose |
+| ---- | ------- |
+| `uploads_data/` | Original uploads |
+| `qdrant_data/` | Vector index |
+| `postgres_data/` | Chat sessions, settings |
+| Docker volume `backend_model_cache` | Embedding model cache |
+
+### Ingest pipeline
+
+```mermaid
+flowchart TD
+  Upload["Upload file"] --> Save["Save to uploads_data/"]
+  Save --> Job["Background ingest job"]
+  Job --> Extract["Extract text<br/>(pypdf fast path or Docling)"]
+  Extract --> Chunk["Chunk ≤512 tokens"]
+  Chunk --> Embed["Embed → Qdrant"]
+```
+
+</details>
+
+---
 
 ## Contributing
 
-Contributions are welcome. Use conventional commits (`feat:`, `fix:`, `docs:`). Run `npm run lint` in `frontend` before opening PRs.
+Contributions welcome. Use conventional commits (`feat:`, `fix:`, `docs:`). Run `npm run lint` in `frontend` before opening PRs.
