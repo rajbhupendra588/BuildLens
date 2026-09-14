@@ -1,0 +1,60 @@
+---
+description: Always work on a new branch; commit and push there; new branch after each push
+alwaysApply: true
+---
+
+# Git workflow — one branch per change batch
+
+Follow this for **every** task that edits files, commits, or pushes. Do **not** commit or push directly to `main` unless the user explicitly asks to.
+
+## Before you change anything
+
+1. Fetch and update the default branch:
+   ```bash
+   git fetch buildlens 2>/dev/null || git fetch origin
+   git checkout main
+   git pull buildlens main 2>/dev/null || git pull origin main
+   ```
+2. **Create a new branch** from `main` (never reuse the branch you just pushed):
+   ```bash
+   git checkout -b feature/<branch_name>
+   ```
+3. **Branch naming (required):** always `feature/<branch_name>` — lowercase, words separated by hyphens (kebab-case). Examples: `feature/readme-tutorial`, `feature/git-branch-rules`, `feature/upload-limit-fix`. Do not use `feat/`, `fix/`, `docs/`, or commit-style prefixes on branch names.
+
+If you are already on a **fresh** branch created for **this** task and nothing has been pushed yet, stay on it. If the user’s new request is a **new** task after a push, start again from step 1 with a **new** branch name.
+
+## While working
+
+- Make all edits on the current feature branch only.
+- Commit when the user asks (or when they expect a commit as part of the task). One focused commit or a small logical series on **this** branch only.
+
+## Push
+
+1. Push the branch (first time):
+   ```bash
+   git push -u buildlens HEAD
+   ```
+   Use `origin` instead of `buildlens` if that is the remote the user uses.
+2. Do **not** push to `main` unless the user explicitly requests it.
+3. After a successful push, treat the branch as **done**. Open a PR with `gh pr create` only when the user asks.
+
+## After every push (next task)
+
+Before any **new** work:
+
+- Return to `main`, pull latest, and **`git checkout -b` a new branch** with a new name.
+- Do **not** keep committing on the branch that was already pushed for a previous task.
+
+## Quick checklist
+
+| Step | Action |
+| ---- | ------ |
+| Start task | `main` → pull → **`feature/<branch_name>`** |
+| Edit / commit | On that branch only |
+| Push | `git push -u <remote> HEAD` |
+| Next task | pull `main` → **new `feature/…` branch** |
+
+## Exceptions
+
+- User explicitly says: commit/push to `main`, hotfix on `main`, or “stay on this branch”.
+- Read-only tasks (questions, reviews with no commits): no branch required unless you will edit files.
