@@ -1,6 +1,13 @@
 "use client";
 
-import { Message, ChatSession, MediaAttachment, SourceItem } from "@/types/chat";
+import {
+  Message,
+  ChatSession,
+  MediaAttachment,
+  SourceItem,
+  HistoryMessage,
+  hydrateChatMessage,
+} from "@/types/chat";
 import { useRef, useState } from "react";
 import { useChatStore } from "./use-chat-store";
 import { apiStream, apiRequest } from "@/lib/api";
@@ -22,8 +29,32 @@ export function useChatStream() {
     abortControllerRef.current?.abort();
   };
 
-  const sendMessage = async (question: string) => {
-    if (!question.trim() || !currentSessionId) return;
+  const refreshHistory = async (sessionId: string) => {
+    const rawHistory = await apiRequest<HistoryMessage[]>(
+      `/chat/history/${sessionId}`,
+    );
+    setMessages(rawHistory.map(hydrateChatMessage));
+  };
+
+  const rollbackFrom = async (messageId: string, sessionId?: string | null) => {
+    const sid = sessionId ?? currentSessionId;
+    if (!sid) return;
+    await apiRequest(`/chat/sessions/${sid}/messages/${messageId}/rollback`, {
+      method: "POST",
+    });
+    setMessages((prev) => {
+      const index = prev.findIndex((m) => m.id === messageId);
+      if (index === -1) return prev;
+      return prev.slice(0, index);
+    });
+  };
+
+  const sendMessage = async (
+    question: string,
+    sessionIdOverride?: string | null,
+  ) => {
+    const sessionId = sessionIdOverride ?? currentSessionId;
+    if (!question.trim() || !sessionId) return;
 
     setIsTyping(true);
     setStreamStatus(null);
@@ -41,20 +72,22 @@ export function useChatStream() {
     setMessages((prev) => [...prev, userMsg]);
 
     const aiMsgId = crypto.randomUUID();
+    const aiCreatedAt = new Date().toISOString();
     let accumulatedContent = "";
     let sources: SourceItem[] = [];
     let media: MediaAttachment[] = [];
     let detectedMode: string | undefined;
     let modeLabel: string | undefined;
     let modeIcon: string | undefined;
+    let resolvedAiId = aiMsgId;
 
     const upsertAssistant = (content: string) => {
       setMessages((prev) => {
-        const others = prev.filter((m) => m.id !== aiMsgId);
+        const others = prev.filter((m) => m.id !== resolvedAiId && m.id !== aiMsgId);
         return [
           ...others,
           {
-            id: aiMsgId,
+            id: resolvedAiId,
             role: "assistant" as const,
             content,
             sources,
@@ -62,27 +95,7 @@ export function useChatStream() {
             detectedMode,
             modeLabel,
             modeIcon,
-            created_at: new Date().toISOString(),
-          },
-        ];
-      });
-    };
-
-    const patchAssistant = (content: string) => {
-      setMessages((prev) => {
-        const others = prev.filter((m) => m.id !== aiMsgId);
-        return [
-          ...others,
-          {
-            id: aiMsgId,
-            role: "assistant" as const,
-            content,
-            sources,
-            media,
-            detectedMode,
-            modeLabel,
-            modeIcon,
-            created_at: new Date().toISOString(),
+            created_at: aiCreatedAt,
           },
         ];
       });
@@ -91,7 +104,7 @@ export function useChatStream() {
     try {
       const params = new URLSearchParams({
         question,
-        session_id: currentSessionId,
+        session_id: sessionId,
         provider: selectedProvider,
         model: selectedModel,
       });
@@ -101,7 +114,7 @@ export function useChatStream() {
       });
       const decoder = new TextDecoder();
 
-      outer: while (true) {
+      while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
@@ -117,7 +130,40 @@ export function useChatStream() {
           try {
             const data = JSON.parse(dataStr);
 
-            if (data.type === "done") break outer;
+            if (data.type === "done") continue;
+
+            if (data.type === "user_message" && typeof data.id === "string") {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === userMsg.id
+                    ? {
+                        ...m,
+                        id: data.id,
+                        created_at: data.created_at ?? m.created_at,
+                      }
+                    : m,
+                ),
+              );
+              userMsg.id = data.id;
+              continue;
+            }
+
+            if (data.type === "assistant_saved" && typeof data.id === "string") {
+              const previousId = resolvedAiId;
+              resolvedAiId = data.id;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === previousId || m.id === aiMsgId
+                    ? {
+                        ...m,
+                        id: data.id,
+                        created_at: data.created_at ?? m.created_at,
+                      }
+                    : m,
+                ),
+              );
+              continue;
+            }
 
             if (data.type === "error") {
               console.error("LLM Error:", data.content);
@@ -126,7 +172,7 @@ export function useChatStream() {
                   ? data.content
                   : "Something went wrong while generating a reply.",
               );
-              break outer;
+              continue;
             }
 
             if (data.type === "status" && typeof data.text === "string") {
@@ -135,24 +181,24 @@ export function useChatStream() {
 
             if (data.type === "sources") {
               sources = data.sources ?? [];
-              patchAssistant("");
+              upsertAssistant(accumulatedContent);
             }
 
             if (data.type === "media") {
               media = data.media ?? [];
-              patchAssistant(accumulatedContent);
+              upsertAssistant(accumulatedContent);
             }
 
             if (data.type === "intent") {
               detectedMode = data.mode;
               modeLabel = data.label;
               modeIcon = data.icon;
-              patchAssistant(accumulatedContent);
+              upsertAssistant(accumulatedContent);
             }
 
             if (data.type === "content") {
               accumulatedContent += data.text;
-              patchAssistant(accumulatedContent);
+              upsertAssistant(accumulatedContent);
             }
           } catch {
             // malformed SSE line — skip
@@ -164,23 +210,7 @@ export function useChatStream() {
       if (error instanceof Error && error.name === "AbortError") {
         // Mark the partial response as complete
         if (accumulatedContent) {
-          setMessages((prev) => {
-            const others = prev.filter((m) => m.id !== aiMsgId);
-            return [
-              ...others,
-              {
-                id: aiMsgId,
-                role: "assistant" as const,
-                content: accumulatedContent,
-                sources,
-                media,
-                detectedMode,
-                modeLabel,
-                modeIcon,
-                created_at: new Date().toISOString(),
-              },
-            ];
-          });
+          upsertAssistant(accumulatedContent);
         }
       } else {
         console.error("Stream error:", error);
@@ -190,9 +220,7 @@ export function useChatStream() {
       setIsTyping(false);
       setStreamStatus(null);
 
-      // Refresh session title after first exchange
-      if (currentSessionId) {
-        const sessionId = currentSessionId;
+      if (sessionId) {
         setTimeout(async () => {
           try {
             const sessions = await apiRequest<ChatSession[]>("/chat/sessions");
@@ -210,6 +238,8 @@ export function useChatStream() {
     messages,
     setMessages,
     sendMessage,
+    rollbackFrom,
+    refreshHistory,
     isTyping,
     streamStatus,
     stopGeneration,

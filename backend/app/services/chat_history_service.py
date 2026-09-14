@@ -68,5 +68,22 @@ class ChatHistoryService:
             return True
         return False
 
+    def rollback_from_message(
+        self, db: Session, session_id: uuid.UUID, message_id: uuid.UUID
+    ) -> Optional[int]:
+        """Delete this message and every later message in the session.
+
+        Returns the number of deleted rows, or None if the message is missing.
+        """
+        messages = self.get_session_message(db, session_id)
+        index = next((i for i, m in enumerate(messages) if m.id == message_id), None)
+        if index is None:
+            return None
+        to_delete = messages[index:]
+        for message in to_delete:
+            db.delete(message)
+        db.commit()
+        return len(to_delete)
+
 
 chat_history_service = ChatHistoryService()

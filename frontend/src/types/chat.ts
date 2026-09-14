@@ -36,6 +36,9 @@ export const MODE_LABELS: Record<string, string> = {
   CODE_ARCHITECT: "Code Architect",
   CODE_DEBUGGER: "Code Debugger",
   SUMMARIZER: "Summarizer",
+  BRIEFING_DOC: "Briefing Document",
+  STUDY_GUIDE: "Study Guide",
+  INFOGRAPHIC: "Infographic",
   DATA_ANALYST: "Data Analyst",
   CREATIVE: "Creative Synthesizer",
 };
@@ -46,9 +49,33 @@ export const MODE_ICONS: Record<string, string> = {
   CODE_ARCHITECT: "💻",
   CODE_DEBUGGER: "🐛",
   SUMMARIZER: "📋",
+  BRIEFING_DOC: "📑",
+  STUDY_GUIDE: "📚",
+  INFOGRAPHIC: "🎨",
   DATA_ANALYST: "📊",
   CREATIVE: "💡",
 };
+
+export type HistoryMessage = Message & {
+  detected_mode?: string | null;
+};
+
+export function hydrateChatMessage(m: HistoryMessage): Message {
+  const detectedMode = m.detectedMode ?? m.detected_mode ?? undefined;
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    sources: m.sources,
+    media: m.media ?? [],
+    provider: m.provider,
+    model: m.model,
+    detectedMode,
+    modeLabel: detectedMode ? MODE_LABELS[detectedMode] : undefined,
+    modeIcon: detectedMode ? MODE_ICONS[detectedMode] : undefined,
+    created_at: m.created_at,
+  };
+}
 
 export interface ChatSession {
   id: string;

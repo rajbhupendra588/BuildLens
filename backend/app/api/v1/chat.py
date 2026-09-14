@@ -13,15 +13,19 @@ from app.services.retrieval_service import retrieval_service
 from app.services.vector_service import vector_service
 from app.services.llm_service import llm_service
 from app.services.chat_history_service import chat_history_service
-from app.services.intent_service import intent_classifier
+from app.services.intent_service import IntentMode, intent_classifier
+from app.services.slash_command_service import parse_slash_command
 from app.services.settings_service import settings_service
 from app.services.media_resolver import build_media_attachments, is_image_filename
 from app.services.document_storage_service import document_storage
 from app.services.session_attachment_service import (
     attach_library_document,
     build_session_context_chunks,
+    detach_from_session,
     list_for_session,
     merge_with_vector_results,
+    resolve_index_status,
+    set_index_status,
 )
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -141,17 +145,58 @@ async def list_session_attachments(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     rows = list_for_session(session_id)
-    return [
-        {
-            "id": str(r.id),
-            "document_id": r.document_id,
-            "file_name": r.file_name,
-            "index_status": r.index_status,
-            "preview_chars": len(r.quick_text or ""),
-            "created_at": r.created_at.isoformat(),
-        }
-        for r in rows
-    ]
+    indexed_docs = await retrieval_service.list_indexed_documents()
+    indexed_ids = {d["document_id"] for d in indexed_docs if d.get("document_id")}
+
+    payload: list[dict] = []
+    for r in rows:
+        status = resolve_index_status(r, indexed_ids)
+        if status == "indexed" and r.index_status != "indexed":
+            set_index_status(r.document_id, "indexed")
+        chat_ready = status in ("indexed", "quick_ready")
+        payload.append(
+            {
+                "id": str(r.id),
+                "document_id": r.document_id,
+                "file_name": r.file_name,
+                "index_status": status,
+                "chat_ready": chat_ready,
+                "preview_chars": len(r.quick_text or ""),
+                "created_at": r.created_at.isoformat(),
+            }
+        )
+    return payload
+
+
+@router.delete("/sessions/{session_id}/attachments/{attachment_id}")
+async def remove_session_attachment(
+    session_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    db: Session = Depends(get_session),
+):
+    session = db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not detach_from_session(session_id, attachment_id):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return {"message": "Attachment removed from conversation"}
+
+
+@router.post("/sessions/{session_id}/messages/{message_id}/rollback")
+async def rollback_from_message(
+    session_id: uuid.UUID,
+    message_id: uuid.UUID,
+    db: Session = Depends(get_session),
+):
+    """Remove this message and every message after it in the conversation."""
+    session = db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    deleted = chat_history_service.rollback_from_message(db, session_id, message_id)
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return {"deleted": deleted}
 
 
 @router.get("/history/{session_id}")
@@ -208,7 +253,13 @@ async def ask_question_stream(
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_session)
 ):
-    chat_history_service.add_message(db, session_id, "user", question, provider, model)
+    user_row = chat_history_service.add_message(
+        db, session_id, "user", question, provider, model
+    )
+
+    slash = parse_slash_command(question)
+    retrieval_query = slash.retrieval_query
+    llm_user_message = slash.llm_user_message
 
     # Read RAG params from DB if not supplied by the caller
     if top_k is None:
@@ -230,7 +281,22 @@ async def ask_question_stream(
 
     history = chat_history_service.get_history(db, session_id, limit=10)
     if len(history) <= 1:
-        background_tasks.add_task(update_session_title_logic, db, session_id, question, provider, model, api_key)
+        title_seed = question
+        if slash.command == "briefingdoc":
+            title_seed = "Briefing document"
+        elif slash.command == "studyguide":
+            title_seed = "Study guide"
+        elif slash.command == "infographic":
+            title_seed = "Infographic summary"
+        background_tasks.add_task(
+            update_session_title_logic,
+            db,
+            session_id,
+            title_seed,
+            provider,
+            model,
+            api_key,
+        )
 
     indexed_docs = await retrieval_service.list_indexed_documents()
     session_attachments = list_for_session(session_id)
@@ -257,7 +323,7 @@ async def ask_question_stream(
                 )
 
     target_document_ids = retrieval_service.resolve_query_to_documents(
-        question, search_pool
+        retrieval_query, search_pool
     )
     if (
         not target_document_ids
@@ -273,22 +339,42 @@ async def ask_question_stream(
     )
 
     search_limit = top_k
+    if slash.forced_mode in (
+        IntentMode.BRIEFING_DOC,
+        IntentMode.STUDY_GUIDE,
+        IntentMode.INFOGRAPHIC,
+    ):
+        search_limit = max(top_k, 12)
     if target_document_ids and len(target_document_ids) == 1:
-        search_limit = max(top_k, 8)
+        search_limit = max(search_limit, 8)
+
+    docs_for_media = search_pool if scoped_document_ids else indexed_docs
 
     if _CONVERSATIONAL_QUERY.match(question.strip()):
         vector_chunks = []
-    elif (
-        retrieval_service.is_knowledge_base_inventory_query(question)
-        and not search_document_ids
-    ):
-        stats = vector_service.get_stats()
-        vector_chunks = retrieval_service.build_inventory_context_chunks(
-            indexed_docs, stats["total_chunks"]
-        )
+    elif retrieval_service.is_knowledge_base_inventory_query(retrieval_query):
+        inventory_docs = search_pool if scoped_document_ids else indexed_docs
+        if scoped_document_ids or not search_document_ids:
+            stats = vector_service.get_stats()
+            vector_chunks = retrieval_service.build_inventory_context_chunks(
+                inventory_docs, stats["total_chunks"]
+            )
+            if scoped_document_ids and vector_chunks:
+                vector_chunks[0]["content"] = vector_chunks[0]["content"].replace(
+                    "Knowledge base inventory",
+                    "Files attached to this conversation",
+                    1,
+                )
+        else:
+            vector_chunks = await retrieval_service.search(
+                retrieval_query,
+                limit=search_limit,
+                min_score=score_threshold,
+                document_ids=search_document_ids,
+            )
     else:
         vector_chunks = await retrieval_service.search(
-            question,
+            retrieval_query,
             limit=search_limit,
             min_score=score_threshold,
             document_ids=search_document_ids,
@@ -298,34 +384,49 @@ async def ask_question_stream(
         session_context, vector_chunks, limit=search_limit
     )
     context_chunks = retrieval_service.rerank_chunks_by_filename(
-        question, context_chunks
+        retrieval_query, context_chunks
     )
 
-    if target_document_ids:
-        focus_names = [
-            d["file_name"]
+    if scoped_document_ids:
+        attached_names = [
+            d.get("file_name")
             for d in search_pool
-            if d.get("document_id") in target_document_ids and d.get("file_name")
+            if d.get("file_name")
         ]
-        if focus_names:
+        if not attached_names:
+            attached_names = [a.file_name for a in session_attachments]
+        if attached_names:
+            focus_line = (
+                "Answer only from files attached to this conversation: "
+                + ", ".join(attached_names)
+                + ". Do not use content from any other library files."
+            )
+            if target_document_ids:
+                focus_names = [
+                    d["file_name"]
+                    for d in search_pool
+                    if d.get("document_id") in target_document_ids
+                    and d.get("file_name")
+                ]
+                if focus_names:
+                    focus_line += (
+                        " The user's question especially concerns: "
+                        + ", ".join(focus_names)
+                        + "."
+                    )
             context_chunks.insert(
                 0,
                 {
-                    "content": (
-                        "The user's question targets these uploaded file(s): "
-                        + ", ".join(focus_names)
-                        + ". Use excerpts from these files only; do not answer from "
-                        "other uploads unless the user explicitly asks about them."
-                    ),
+                    "content": focus_line,
                     "score": 2.0,
                     "metadata": {
-                        "file_name": focus_names[0],
+                        "file_name": attached_names[0],
                         "element_type": "routing_hint",
                     },
                 },
             )
     media_attachments = build_media_attachments(
-        question, context_chunks, indexed_docs
+        retrieval_query, context_chunks, docs_for_media
     )
 
     # Build serialisable source cards from retrieved chunks
@@ -346,9 +447,18 @@ async def ask_question_stream(
 
     # Classify intent using source metadata signals + query patterns (zero I/O)
     source_metadata = [c["metadata"] for c in context_chunks]
-    intent = intent_classifier.classify(question, source_metadata)
+    intent = intent_classifier.classify(retrieval_query, source_metadata)
+    if slash.forced_mode is not None:
+        intent = intent_classifier.result_for_mode(
+            slash.forced_mode,
+            has_context=len(source_metadata) > 0,
+            confidence=1.0,
+            signals=[f"slash_command:/{slash.command}"],
+        )
 
     async def generate_with_history_tracking():
+        yield f"data: {json.dumps({'type': 'user_message', 'id': str(user_row.id), 'created_at': user_row.created_at.isoformat()})}\n\n"
+
         # Emit sources as first event so the client can render cards immediately
         yield f"data: {json.dumps({'type': 'sources', 'sources': source_cards})}\n\n"
 
@@ -360,7 +470,7 @@ async def ask_question_stream(
 
         full_ai_response = ""
         async for chunk_raw in llm_service.generate_answer_stream(
-            question, context_chunks, history, provider=provider, model=model,
+            llm_user_message, context_chunks, history, provider=provider, model=model,
             intent=intent, api_key=api_key,
             inline_images=bool(media_attachments),
         ):
@@ -385,12 +495,13 @@ async def ask_question_stream(
 
         if full_ai_response:
             try:
-                chat_history_service.add_message(
+                assistant_row = chat_history_service.add_message(
                     db, session_id, "assistant", full_ai_response, provider, model,
                     sources=source_cards,
                     media=media_attachments or None,
                     detected_mode=intent.mode.value,
                 )
+                yield f"data: {json.dumps({'type': 'assistant_saved', 'id': str(assistant_row.id), 'created_at': assistant_row.created_at.isoformat()})}\n\n"
             except Exception as e:
                 print(f"Error saving assistant response: {e}")
         else:

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useLayoutEffect } from "react";
 import { useParams } from "next/navigation";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { ChatInterface } from "@/components/chat/chat-interface";
@@ -10,7 +10,7 @@ function ChatSessionContent() {
   const params = useParams<{ session_id: string }>();
   const { setCurrentSessionId } = useChatStore();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (params.session_id) {
       setCurrentSessionId(params.session_id);
     }

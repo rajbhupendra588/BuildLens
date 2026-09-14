@@ -149,7 +149,11 @@ class LLMService:
     ) -> AsyncGenerator[str, None]:
         """Route streaming generation to the correct provider."""
         system_prompt = self._prepare_system_prompt(
-            context_chunks, history, intent, inline_images=inline_images
+            context_chunks,
+            history,
+            intent,
+            inline_images=inline_images,
+            user_query=query,
         )
 
         if provider == "ollama":
@@ -339,12 +343,18 @@ class LLMService:
         history: List[Any],
         intent: Optional[IntentResult] = None,
         inline_images: bool = False,
+        user_query: Optional[str] = None,
     ) -> str:
         context_text = retrieval_service.format_context_for_llm(context_chunks)
 
         if intent is not None:
             return prompt_composer.compose(
-                intent, context_chunks, history, context_text, inline_images=inline_images
+                intent,
+                context_chunks,
+                history,
+                context_text,
+                inline_images=inline_images,
+                user_query=user_query,
             )
 
         # Legacy fallback (title generation, non-intent paths)

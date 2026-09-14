@@ -101,6 +101,33 @@ def list_for_session(session_id: uuid.UUID) -> list[SessionAttachment]:
         )
 
 
+def resolve_index_status(
+    att: SessionAttachment,
+    indexed_document_ids: set[str],
+) -> str:
+    """UI/API status: library index wins; quick text means chat-ready."""
+    if att.document_id in indexed_document_ids:
+        return "indexed"
+    if att.index_status == "error":
+        return "error"
+    if att.index_status in ("indexed", "quick_ready"):
+        return att.index_status
+    if (att.quick_text or "").strip():
+        return "quick_ready"
+    return att.index_status or "indexing"
+
+
+def detach_from_session(session_id: uuid.UUID, attachment_id: uuid.UUID) -> bool:
+    """Remove a file from the conversation without deleting it from the library."""
+    with _db() as db:
+        row = db.get(SessionAttachment, attachment_id)
+        if not row or row.session_id != session_id:
+            return False
+        db.delete(row)
+        db.commit()
+        return True
+
+
 def build_session_context_chunks(
     session_id: uuid.UUID,
     document_ids: list[str] | None = None,
