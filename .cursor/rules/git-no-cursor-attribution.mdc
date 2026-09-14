@@ -1,0 +1,29 @@
+---
+description: Never mention Cursor in git commits or pushes
+alwaysApply: true
+---
+
+# Git commits and pushes — no Cursor attribution
+
+When creating commits, amending, or pushing (including PR titles/bodies opened as part of push):
+
+- **Do not** include the word `Cursor` or `cursor` anywhere in commit messages (subject or body).
+- **Do not** add trailers or metadata that reference Cursor (e.g. `Co-authored-by`, `Signed-off-by`, `--author`, or similar).
+- **Do not** mention Cursor, the IDE, or AI assistance in push-related text (PR title, PR description, release notes tied to the push).
+
+Write commit messages as normal human/project contributions: focus on **why** the change exists, match this repo’s existing commit style, and use only product/code terms (e.g. BuildLens, module names).
+
+**Examples**
+
+```text
+# Bad
+feat: settings tiles (via Cursor)
+
+# Bad
+fix: hydration
+
+Co-authored-by: Cursor <noreply@cursor.com>
+
+# Good
+feat (settings): widen layout and add section navigation tiles
+```
