@@ -39,6 +39,7 @@ export const MODE_LABELS: Record<string, string> = {
   BRIEFING_DOC: "Briefing Document",
   STUDY_GUIDE: "Study Guide",
   INFOGRAPHIC: "Infographic",
+  DASHBOARD: "Visual Dashboard",
   DATA_ANALYST: "Data Analyst",
   CREATIVE: "Creative Synthesizer",
 };
@@ -52,7 +53,8 @@ export const MODE_ICONS: Record<string, string> = {
   BRIEFING_DOC: "📑",
   STUDY_GUIDE: "📚",
   INFOGRAPHIC: "🎨",
-  DATA_ANALYST: "📊",
+  DASHBOARD: "📊",
+  DATA_ANALYST: "📈",
   CREATIVE: "💡",
 };
 

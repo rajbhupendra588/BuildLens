@@ -22,8 +22,14 @@ export const CHAT_SLASH_COMMANDS: ChatSlashCommand[] = [
   {
     name: "infographic",
     label: "Infographic",
-    description: "Visual summary with metrics, flow, and key takeaways",
+    description: "Detailed visual briefing with story, metrics, and takeaways",
     icon: "🎨",
+  },
+  {
+    name: "dashboard",
+    label: "Visual Dashboard",
+    description: "Professional charts: KPIs, pie, bars, table, and insights",
+    icon: "📊",
   },
 ];
 

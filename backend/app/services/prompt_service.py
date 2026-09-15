@@ -12,7 +12,8 @@ from app.services.intent_service import IntentMode, IntentResult
 
 _INFOGRAPHIC_QUERY = re.compile(
     r"\b("
-    r"infographic|visual(?:\s+summary|\s+content|\s+overview)?|"
+    r"infographic|visual(?:\s+summary|\s+content|\s+overview|\s+dashboard)?|"
+    r"dashboard|pie\s+chart|bar\s+chart|line\s+chart|donut\s+chart|"
     r"one[\s-]?pager|visuali[sz]e|diagram\s+summary|visual\s+breakdown"
     r")\b",
     re.I,
@@ -51,7 +52,7 @@ mindmap, or block diagram). Keep diagrams modest (roughly ≤12 nodes) so they r
 
 _INFOGRAPHIC_OUTPUT_SPEC = """
 
-INFOGRAPHIC MODE (required for this request):
+VISUAL JSON MODE (required for this request):
 Respond in this exact shape:
 1. Optional intro: at most one short sentence (≤25 words).
 2. One ```infographic code fence containing a single JSON object that JSON.parse accepts.
@@ -61,32 +62,35 @@ CRITICAL JSON RULES:
 - Double quotes only. No comments, no trailing commas, no markdown, no nested code fences.
 - Never put raw line breaks or unescaped double quotes inside a string.
 - For process flow, prefer "steps" (and optional "edges"). Do NOT embed a Mermaid diagram as a JSON string.
+- Never invent numbers. Only chart or tabulate figures that appear in the sources (or clear counts you can derive, e.g. number of listed roles). If a chart cannot be grounded, omit it and explain the gap in a story paragraph.
 
 JSON shape:
 {
   "title": string,
-  "subtitle": string (optional),
-  "meta": string[] (optional, e.g. author, scope, reading time — max 4 tags),
+  "subtitle": string (optional, 1–2 sentences),
+  "kind": "infographic" | "dashboard",
+  "meta": string[] (optional, max 4 tags: source file, scope, date, audience),
   "accent": "default" | "violet" | "emerald" | "amber" | "rose" (optional),
   "blocks": Block[]
 }
 
-Use 5–8 blocks. Keep every string concise (≤140 characters). Ground facts in the user's documents.
+Use 7–14 blocks. Story/table/takeaway strings may be up to 320 characters. Chart labels stay short (≤40 chars).
 
 Block types:
+- story: {"type":"story","title":string?,"paragraphs":string[]}  (2–4 grounded paragraphs)
 - highlight: {"type":"highlight","variant":"problem"|"insight"|"solution"|"neutral","title":string,"text":string}
-- metrics: {"type":"metrics","title":string?,"items":[{"label":string,"value":string,"hint":string?}]}
+- metrics: {"type":"metrics","title":string?,"items":[{"label":string,"value":string,"hint":string?}]}  (3–6 KPIs)
+- chart: {"type":"chart","chart":"pie"|"donut"|"bar"|"hbar"|"line","title":string,"subtitle":string?,"unit":string?,"source":string?,"series":[{"name":string,"points":[{"label":string,"value":number}]}]}
+  pie/donut: one series, 3–7 slices, values > 0. bar/hbar: 3–8 categories. line: 3+ sequential points.
+- table: {"type":"table","title":string?,"caption":string?,"columns":string[],"rows":string[][]}  (2–6 columns, 3–8 rows)
+- timeline: {"type":"timeline","title":string?,"items":[{"when":string,"title":string,"text":string?}]}
 - formula: {"type":"formula","title":string?,"expression":string,"caption":string?}
 - pillars: {"type":"pillars","title":string?,"items":[{"title":string,"description":string,"icon":string?}]}
 - flow: {"type":"flow","title":string?,"steps":[{"id":string,"label":string}],"edges":[{"from":string,"to":string}]?}
-  (3–8 steps; edges optional — omitted edges chain steps in order. Do not include a mermaid field.)
 - compare: {"type":"compare","title":string?,"left":{"heading":string,"points":string[]},"right":{"heading":string,"points":string[]}}
-- takeaways: {"type":"takeaways","title":string?,"items":string[]}
+- takeaways: {"type":"takeaways","title":string?,"items":string[]}  (4–7 insights)
 
 Pillar icon names (optional): brain, cpu, network, shield, target, layers, zap, book, cog, database, sparkles.
-
-Minimal valid example:
-{"title":"Headline","subtitle":"One line","accent":"violet","blocks":[{"type":"metrics","title":"Key metrics & data highlights","items":[{"label":"Concept","value":"Takeaway"}]},{"type":"flow","title":"Step-by-step process","steps":[{"id":"start","label":"Starting point"},{"id":"mid","label":"Transition"},{"id":"end","label":"Outcome"}]},{"type":"highlight","variant":"insight","title":"The big takeaway","text":"One foundational sentence."}]}
 
 Do not output ASCII diagrams, pipe art, or duplicate the JSON as prose.
 """
@@ -264,29 +268,62 @@ Grounding rules:
 """
 
 _INFOGRAPHIC_PROMPT = """\
-You are a data visualizer and information designer. Synthesize the user's active \
-sources into a highly scannable Infographic & Visual Summary. Ground every metric, \
-phase, and takeaway in the retrieved document context—never invent figures or steps.
+You are a senior information designer (Gemini/ChatGPT canvas style). Turn the user's \
+active sources into a detailed visual briefing — not a thin poster. Ground every \
+metric, date, and claim in the retrieved document context. Never invent figures.
 
-BuildLens renders your answer as one ```infographic JSON block (see INFOGRAPHIC MODE \
-instructions appended below). Map the source material to these visual themes inside \
-that JSON:
+Set "kind":"infographic". Build a scannable but information-rich one-pager with \
+7–12 blocks in this narrative order when the sources support it:
 
-1. **Infographic title** — Set `title` (and optional `subtitle`) to a punchy headline \
-that captures the story in the sources.
-2. **Key metrics & data highlights** — Include a `metrics` block titled \
-"Key metrics & data highlights". Each item: `label` = metric or core concept; \
-`value` or `hint` = one-sentence punchy takeaway (scannable, arrow-like clarity: \
-concept → insight).
-3. **Step-by-step process / chronological flow** — Include a `flow` block with \
-`steps` (id + label, 3–8 items) showing phases: starting point → middle \
-transition → final outcome. Use phase names from the text. Never embed Mermaid \
-inside a JSON string.
-4. **The big takeaway** — End with a `highlight` (variant `insight`) or `takeaways` \
-block anchoring the entire summary in one foundational sentence grounded in the sources.
+1. **story** titled "At a glance" — 2–4 paragraphs: what this is, why it matters, \
+who/what it covers, and the main conclusion. Write in complete sentences.
+2. **metrics** — 3–6 KPI cards. Prefer real numbers, dates, counts, or named scores \
+from the sources; otherwise a short concept → insight pair.
+3. **chart** — include at least one pie/donut (mix/share) or bar/hbar (comparison) \
+whenever the sources contain comparable quantities, skill clusters, time spans, \
+or countable items. Add a line chart if a sequence of dates/values exists.
+4. **table** — supporting figures, roles, skills, or findings the charts cannot show.
+5. **flow** or **timeline** — process, career path, or chronological milestones.
+6. **pillars** or **compare** — capabilities vs gaps, strengths vs risks, before/after.
+7. **highlight** (insight or problem) plus **takeaways** (4–6 specific next-read or \
+decision points).
 
-Use additional block types only when they add clarity. Prefer 5–8 blocks total. \
-Keep strings concise and functional.
+Prefer depth over decoration. Subtitle should preview the story in one or two sentences. \
+Cite source filenames in meta or chart source fields.
+
+{history_section}
+
+{context_section}\
+"""
+
+_DASHBOARD_PROMPT = """\
+You are a principal data journalist and dashboard designer. Produce a professional \
+visual dashboard (Gemini/ChatGPT immersive style) with charts, not a bullet list. \
+Every KPI, slice, and table cell must be grounded in the retrieved documents. \
+Never invent statistics.
+
+Set "kind":"dashboard" and "accent":"emerald" unless another accent better matches \
+the subject. Use 8–14 blocks in this order:
+
+1. **story** titled "Executive briefing" — 3–4 paragraphs covering context, what the \
+numbers/facts show, material risks or strengths, and the decision this dashboard \
+supports.
+2. **metrics** — 4–6 KPI cards with numeric values when available (years of experience, \
+counts, scores, dates, % if present). Each hint explains why the KPI matters.
+3. **chart** pie or donut — composition (skills mix, time allocation, category share, \
+portfolio split). Derive slices only from documented groups; values may be counts \
+or relative weights stated or clearly implied.
+4. **chart** bar or hbar — ranking/comparison (roles, systems, vendors, periods).
+5. **chart** line — only if the sources have a time sequence; otherwise omit.
+6. **table** — the underlying grid (columns like Item, Detail, Evidence/source).
+7. **timeline** — career, project, or program milestones with dates from the sources.
+8. **highlight** blocks for the main risk and the main opportunity (problem + solution).
+9. **takeaways** — 5–7 analyst recommendations a busy executive can act on.
+
+If the document is qualitative (e.g. a resume with few numbers), still build charts \
+from countable, source-grounded structure (years per employer, skill groups, \
+number of domains) and say in the story that figures are derived counts, not \
+official KPIs.
 
 {history_section}
 
@@ -347,6 +384,7 @@ _TEMPLATES: Dict[IntentMode, str] = {
     IntentMode.BRIEFING_DOC: _BRIEFING_DOC_PROMPT,
     IntentMode.STUDY_GUIDE: _STUDY_GUIDE_PROMPT,
     IntentMode.INFOGRAPHIC: _INFOGRAPHIC_PROMPT,
+    IntentMode.DASHBOARD: _DASHBOARD_PROMPT,
     IntentMode.DATA_ANALYST: _DATA_ANALYST_PROMPT,
     IntentMode.CREATIVE: _CREATIVE_PROMPT,
 }
@@ -449,7 +487,7 @@ class PromptComposer:
             context_section=context_section,
         )
         prompt += _MARKDOWN_VISUAL_POLICY
-        if intent.mode == IntentMode.INFOGRAPHIC or (
+        if intent.mode in (IntentMode.INFOGRAPHIC, IntentMode.DASHBOARD) or (
             user_query and _INFOGRAPHIC_QUERY.search(user_query)
         ):
             prompt += _INFOGRAPHIC_OUTPUT_SPEC

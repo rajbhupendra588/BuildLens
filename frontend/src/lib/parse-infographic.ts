@@ -1,9 +1,23 @@
 import type {
   InfographicAccent,
   InfographicBlock,
+  InfographicChartKind,
+  InfographicChartPoint,
+  InfographicChartSeries,
   InfographicDocument,
   InfographicHighlightVariant,
+  InfographicKind,
 } from "@/types/infographic";
+
+const KINDS = new Set<InfographicKind>(["infographic", "dashboard"]);
+
+const CHART_KINDS = new Set<InfographicChartKind>([
+  "pie",
+  "donut",
+  "bar",
+  "hbar",
+  "line",
+]);
 
 const ACCENTS = new Set<InfographicAccent>([
   "default",
@@ -37,7 +51,53 @@ function asStringArray(value: unknown): string[] {
   return value
     .map((v) => asString(v))
     .filter(Boolean)
-    .slice(0, 8);
+    .slice(0, 12);
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const n = Number(value.replace(/[%$,\s]/g, "").replace(/[()]/g, ""));
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function parseChartPoints(raw: unknown): InfographicChartPoint[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const label =
+        asString(row.label) || asString(row.name) || asString(row.category);
+      const value = asNumber(row.value ?? row.y ?? row.count);
+      if (!label || value === null) return null;
+      return { label, value };
+    })
+    .filter(Boolean) as InfographicChartPoint[];
+}
+
+function parseChartSeries(block: Record<string, unknown>): InfographicChartSeries[] {
+  if (Array.isArray(block.series) && block.series.length > 0) {
+    return block.series
+      .map((item, index) => {
+        if (!item || typeof item !== "object") return null;
+        const row = item as Record<string, unknown>;
+        const points = parseChartPoints(
+          row.points || row.data || row.items || row.values,
+        );
+        if (points.length === 0) return null;
+        return {
+          name: asString(row.name) || asString(row.label) || `Series ${index + 1}`,
+          points: points.slice(0, 12),
+        };
+      })
+      .filter(Boolean) as InfographicChartSeries[];
+  }
+  const points = parseChartPoints(block.points || block.data || block.items);
+  if (points.length === 0) return [];
+  return [{ name: asString(block.seriesName) || "Value", points: points.slice(0, 12) }];
 }
 
 function mermaidSafeId(raw: string, fallback: string): string {
@@ -46,7 +106,16 @@ function mermaidSafeId(raw: string, fallback: string): string {
 }
 
 function mermaidSafeLabel(raw: string): string {
-  return raw.replace(/[\[\]|#{}"]/g, " ").replace(/\s+/g, " ").trim() || "step";
+  return raw
+    .replace(/[\[\]|#{}"]/g, " ")
+    .replace(/[()]/g, " ")
+    .replace(/[—–−]/g, "-")
+    .replace(/&/g, "and")
+    .replace(/</g, "lt")
+    .replace(/>/g, "gt")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 72) || "step";
 }
 
 function mermaidFromSteps(
@@ -72,7 +141,7 @@ function mermaidFromSteps(
 
   const lines = ["flowchart LR"];
   for (const step of steps) {
-    lines.push(`  ${step.id}[${step.label}]`);
+    lines.push(`  ${step.id}["${step.label}"]`);
   }
 
   const edges = Array.isArray(edgesRaw)
@@ -102,11 +171,11 @@ function mermaidFromSteps(
 }
 
 function mermaidFromBlock(block: Record<string, unknown>): string {
+  const fromSteps = mermaidFromSteps(block.steps, block.edges);
   const fromLines = Array.isArray(block.mermaidLines)
     ? block.mermaidLines.map((line) => asString(line)).filter(Boolean).join("\n")
     : "";
-  const fromSteps = mermaidFromSteps(block.steps, block.edges);
-  return asString(block.mermaid) || fromLines || fromSteps || "";
+  return fromSteps || fromLines || asString(block.mermaid) || "";
 }
 
 function parseBlock(raw: unknown): InfographicBlock | null {
@@ -115,6 +184,19 @@ function parseBlock(raw: unknown): InfographicBlock | null {
   const type = asString(block.type);
 
   switch (type) {
+    case "story":
+    case "narrative":
+    case "overview": {
+      const paragraphs = asStringArray(
+        block.paragraphs || block.body || block.text || block.items,
+      );
+      if (paragraphs.length === 0) return null;
+      return {
+        type: "story",
+        title: asString(block.title) || undefined,
+        paragraphs: paragraphs.slice(0, 6),
+      };
+    }
     case "highlight": {
       const variant = asString(block.variant, "neutral") as InfographicHighlightVariant;
       const title = asString(block.title);
@@ -145,7 +227,81 @@ function parseBlock(raw: unknown): InfographicBlock | null {
       return {
         type: "metrics",
         title: asString(block.title) || undefined,
-        items: items.slice(0, 6),
+        items: items.slice(0, 8),
+      };
+    }
+    case "chart":
+    case "pie":
+    case "donut":
+    case "bar":
+    case "hbar":
+    case "line": {
+      const chartRaw = asString(block.chart) || asString(block.chartType) || type;
+      const chart = (
+        CHART_KINDS.has(chartRaw as InfographicChartKind) ? chartRaw : "bar"
+      ) as InfographicChartKind;
+      const title =
+        asString(block.title) || asString(block.name) || "Chart";
+      const series = parseChartSeries(block);
+      if (!title || series.length === 0) return null;
+      return {
+        type: "chart",
+        chart,
+        title,
+        subtitle: asString(block.subtitle) || undefined,
+        unit: asString(block.unit) || undefined,
+        source: asString(block.source) || undefined,
+        series: series.slice(0, 4),
+      };
+    }
+    case "table": {
+      const columns = asStringArray(block.columns || block.headers);
+      const rowsRaw = Array.isArray(block.rows) ? block.rows : [];
+      const rows = rowsRaw
+        .map((row) => {
+          if (Array.isArray(row)) {
+            return row.map((cell) => asString(cell)).slice(0, 8);
+          }
+          if (row && typeof row === "object") {
+            return columns.map((col) =>
+              asString((row as Record<string, unknown>)[col]),
+            );
+          }
+          return null;
+        })
+        .filter((row): row is string[] => Boolean(row && row.some(Boolean)))
+        .slice(0, 10);
+      if (columns.length === 0 || rows.length === 0) return null;
+      return {
+        type: "table",
+        title: asString(block.title) || undefined,
+        caption: asString(block.caption) || undefined,
+        columns: columns.slice(0, 8),
+        rows,
+      };
+    }
+    case "timeline": {
+      const itemsRaw = Array.isArray(block.items) ? block.items : [];
+      const items = itemsRaw
+        .map((item) => {
+          if (!item || typeof item !== "object") return null;
+          const row = item as Record<string, unknown>;
+          const when =
+            asString(row.when) ||
+            asString(row.date) ||
+            asString(row.year) ||
+            asString(row.period);
+          const title = asString(row.title) || asString(row.label);
+          if (!when || !title) return null;
+          const text = asString(row.text) || asString(row.description);
+          return text ? { when, title, text } : { when, title };
+        })
+        .filter(Boolean) as { when: string; title: string; text?: string }[];
+      if (items.length === 0) return null;
+      return {
+        type: "timeline",
+        title: asString(block.title) || undefined,
+        items: items.slice(0, 10),
       };
     }
     case "formula": {
@@ -183,12 +339,32 @@ function parseBlock(raw: unknown): InfographicBlock | null {
       };
     }
     case "flow": {
+      const parsedSteps = Array.isArray(block.steps)
+        ? (block.steps
+            .map((item, index) => {
+              if (!item || typeof item !== "object") return null;
+              const row = item as Record<string, unknown>;
+              const id = mermaidSafeId(
+                asString(row.id) || asString(row.key) || `step${index + 1}`,
+                `step${index + 1}`,
+              );
+              const label =
+                asString(row.label) ||
+                asString(row.title) ||
+                asString(row.name) ||
+                id;
+              if (!label) return null;
+              return { id, label };
+            })
+            .filter(Boolean) as { id: string; label: string }[])
+        : [];
       const mermaid = mermaidFromBlock(block);
-      if (!mermaid) return null;
+      if (!mermaid && parsedSteps.length === 0) return null;
       return {
         type: "flow",
         title: asString(block.title) || undefined,
         mermaid,
+        steps: parsedSteps.length ? parsedSteps : undefined,
       };
     }
     case "compare": {
@@ -216,7 +392,7 @@ function parseBlock(raw: unknown): InfographicBlock | null {
       return {
         type: "takeaways",
         title: asString(block.title) || undefined,
-        items: items.slice(0, 8),
+        items: items.slice(0, 10),
       };
     }
     default:
@@ -395,6 +571,8 @@ export function parseInfographicJson(raw: string): ParseInfographicResult {
 
   const accentRaw = asString(doc.accent, "default") as InfographicAccent;
   const accent = ACCENTS.has(accentRaw) ? accentRaw : "default";
+  const kindRaw = asString(doc.kind, "infographic") as InfographicKind;
+  const kind = KINDS.has(kindRaw) ? kindRaw : "infographic";
 
   return {
     ok: true,
@@ -403,7 +581,8 @@ export function parseInfographicJson(raw: string): ParseInfographicResult {
       subtitle: asString(doc.subtitle) || undefined,
       meta: asStringArray(doc.meta).length ? asStringArray(doc.meta) : undefined,
       accent,
-      blocks: blocks.slice(0, 12),
+      kind,
+      blocks: blocks.slice(0, 18),
     },
   };
 }
