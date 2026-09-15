@@ -93,16 +93,25 @@ export interface UploadIndexOptions {
   sessionId?: string | null;
   onProgress?: (percent: number) => void;
   onChatReady?: () => void;
+  /** Library only: block until Qdrant indexing finishes (default: return after bytes are saved). */
+  waitForFullIndex?: boolean;
+  onIndexComplete?: () => void;
+  onIndexError?: (message: string) => void;
+}
+
+export interface UploadIndexResult {
+  jobId: string;
+  documentId: string;
 }
 
 /**
- * Upload file bytes, then wait for chat-ready (session) or full index (library).
- * Session uploads: returns after quick extract; full index continues on server.
+ * Upload file bytes, then optionally wait for chat-ready (session) or full index (library).
+ * Library uploads return as soon as the server has the file; indexing continues in background.
  */
 export async function uploadAndIndexDocument(
   file: File,
   options?: UploadIndexOptions,
-): Promise<void> {
+): Promise<UploadIndexResult> {
   const err = validateDocumentFile(file);
   if (err) throw new Error(err);
 
@@ -119,6 +128,11 @@ export async function uploadAndIndexDocument(
     options?.onProgress?.(Math.min(pct, 100)),
   );
   options?.onProgress?.(100);
+
+  const result = {
+    jobId: accepted.job_id,
+    documentId: accepted.document_id,
+  };
 
   if (options?.sessionId) {
     await pollIngestJobUntilChatReady(accepted.job_id, (job) => {
@@ -147,9 +161,52 @@ export async function uploadAndIndexDocument(
     void pollIngestJob(accepted.job_id)
       .then(() => notifyDocumentsChanged())
       .catch(() => notifyDocumentsChanged());
-    return;
+    return result;
   }
 
-  await pollIngestJob(accepted.job_id);
-  notifyDocumentsChanged();
+  const runBackgroundIndex = () => {
+    void pollIngestJob(accepted.job_id)
+      .then(() => {
+        notifyDocumentsChanged();
+        options?.onIndexComplete?.();
+      })
+      .catch((error: unknown) => {
+        notifyDocumentsChanged();
+        const message =
+          error instanceof Error ? error.message : "Indexing failed";
+        options?.onIndexError?.(message);
+      });
+  };
+
+  if (options?.waitForFullIndex) {
+    await pollIngestJob(accepted.job_id);
+    notifyDocumentsChanged();
+    options?.onIndexComplete?.();
+  } else {
+    notifyDocumentsChanged();
+    runBackgroundIndex();
+  }
+
+  return result;
+}
+
+/** Poll until library indexing completes (for queue UI). */
+export function watchIngestJob(
+  jobId: string,
+  handlers: {
+    onComplete?: () => void;
+    onError?: (message: string) => void;
+  },
+): void {
+  void pollIngestJob(jobId)
+    .then(() => {
+      notifyDocumentsChanged();
+      handlers.onComplete?.();
+    })
+    .catch((error: unknown) => {
+      notifyDocumentsChanged();
+      handlers.onError?.(
+        error instanceof Error ? error.message : "Indexing failed",
+      );
+    });
 }

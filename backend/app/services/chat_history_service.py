@@ -1,11 +1,14 @@
+from datetime import datetime
 from typing import Any, List, Optional
 from sqlmodel import Session, select
 from app.models.chat import ChatSession, ChatMessage
 import uuid
 
 class ChatHistoryService:
-    def create_session(self, db: Session, title: str = "New Chat"):
-        session = ChatSession(title=title)
+    def create_session(
+        self, db: Session, title: str = "New Chat", user_id: uuid.UUID | None = None
+    ):
+        session = ChatSession(title=title, user_id=user_id)
         db.add(session)
         db.commit()
         db.refresh(session)
@@ -34,6 +37,10 @@ class ChatHistoryService:
             media=media,
         )
         db.add(message)
+        session = db.get(ChatSession, session_id)
+        if session:
+            session.updated_at = datetime.utcnow()
+            db.add(session)
         db.commit()
         return message
     
@@ -55,9 +62,23 @@ class ChatHistoryService:
         session = db.get(ChatSession, session_id)
         if session:
             session.title = new_title
+            session.updated_at = datetime.utcnow()
             db.add(session)
             db.commit()
             db.refresh(session)
+        return session
+
+    def set_session_pinned(
+        self, db: Session, session_id: uuid.UUID, is_pinned: bool
+    ) -> ChatSession | None:
+        session = db.get(ChatSession, session_id)
+        if not session:
+            return None
+        session.is_pinned = is_pinned
+        session.updated_at = datetime.utcnow()
+        db.add(session)
+        db.commit()
+        db.refresh(session)
         return session
 
     def delete_session(self, db: Session, session_id: uuid.UUID):

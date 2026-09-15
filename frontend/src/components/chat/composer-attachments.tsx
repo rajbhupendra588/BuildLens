@@ -97,7 +97,7 @@ export function ComposerAttachments({
   }
 
   return (
-    <div className="mb-2 flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       {pendingUploads.map((item) => (
         <div
           key={item.id}

@@ -10,6 +10,10 @@ from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 from docling_core.types.doc.document import DoclingDocument
 
 from app.core.config import settings
+from app.services.source_location_service import (
+    char_to_line_range,
+    char_to_paragraph_index,
+)
 
 # ── Language detection ────────────────────────────────────────────────────────
 
@@ -117,8 +121,22 @@ class ChunkingService:
             piece = text[i : i + self.CHUNK_SIZE]
             if not piece.strip():
                 continue
+            end_i = i + len(piece)
+            line_start, line_end = char_to_line_range(text, i, end_i)
+            loc_meta = {
+                "line_start": line_start,
+                "line_end": line_end,
+                "paragraph_index": char_to_paragraph_index(text, i),
+            }
+            merged_extra = {**(extra_meta or {}), **loc_meta}
             chunks.append(
-                self._make_chunk(piece, file_name, document_id, start_index + len(chunks), extra_meta)
+                self._make_chunk(
+                    piece,
+                    file_name,
+                    document_id,
+                    start_index + len(chunks),
+                    merged_extra,
+                )
             )
         return chunks
 
@@ -206,15 +224,34 @@ class ChunkingService:
         # Split on Markdown headings (# / ## / ###…)
         sections = re.split(r"(?m)^(?=#{1,6} )", text)
         chunks: List[dict] = []
+        cursor = 0
         for section in sections:
             section = section.strip()
             if not section:
                 continue
+            pos = text.find(section, cursor)
+            if pos < 0:
+                pos = cursor
+            end_pos = pos + len(section)
+            loc_meta = {
+                "line_start": char_to_line_range(text, pos, end_pos)[0],
+                "line_end": char_to_line_range(text, pos, end_pos)[1],
+                "paragraph_index": char_to_paragraph_index(text, pos),
+            }
+            cursor = end_pos
             if len(section) <= self.CHUNK_SIZE:
-                chunks.append(self._make_chunk(section, file_name, document_id, len(chunks)))
+                chunks.append(
+                    self._make_chunk(section, file_name, document_id, len(chunks), loc_meta)
+                )
             else:
                 chunks.extend(
-                    self._simple_split(section, file_name, document_id, len(chunks))
+                    self._simple_split(
+                        section,
+                        file_name,
+                        document_id,
+                        len(chunks),
+                        loc_meta,
+                    )
                 )
         return chunks
 
@@ -222,19 +259,40 @@ class ChunkingService:
 
     def _chunk_docling(self, doc, file_name: str, document_id: str) -> List[dict]:
         raw_chunks = self.chunker.chunk(doc)
-        result: List[dict] = []
-        for i, chunk in enumerate(raw_chunks):
+        serialized: list[tuple[Any, str]] = []
+        for chunk in raw_chunks:
             text = (
                 self.chunker.serialize(chunk)
                 if hasattr(self.chunker, "serialize")
                 else str(chunk)
             )
+            serialized.append((chunk, text))
+
+        full_doc = "\n\n".join(t for _, t in serialized)
+        result: List[dict] = []
+        cursor = 0
+        for i, (chunk, text) in enumerate(serialized):
             token_count = self.chunker.tokenizer.count_tokens(text)
             # HybridChunker can still emit oversize pieces; split so embed
             # and the MiniLM tokenizer stay within 512 tokens.
             if token_count > 512:
+                pos = full_doc.find(text, cursor)
+                if pos < 0:
+                    pos = cursor
+                split_extra = {
+                    "line_start": char_to_line_range(full_doc, pos, pos + len(text))[0],
+                    "line_end": char_to_line_range(full_doc, pos, pos + len(text))[1],
+                    "paragraph_index": char_to_paragraph_index(full_doc, pos),
+                }
+                cursor = pos + len(text)
                 result.extend(
-                    self._simple_split(text, file_name, document_id, len(result))
+                    self._simple_split(
+                        text,
+                        file_name,
+                        document_id,
+                        len(result),
+                        split_extra,
+                    )
                 )
                 continue
 
@@ -245,6 +303,14 @@ class ChunkingService:
                 "char_count": len(text),
                 "token_count": token_count,
             }
+
+            pos = full_doc.find(text, cursor)
+            if pos < 0:
+                pos = cursor
+            meta["line_start"] = char_to_line_range(full_doc, pos, pos + len(text))[0]
+            meta["line_end"] = char_to_line_range(full_doc, pos, pos + len(text))[1]
+            meta["paragraph_index"] = char_to_paragraph_index(full_doc, pos)
+            cursor = pos + len(text)
 
             # Enrich with Docling structural info where available
             if hasattr(chunk, "meta") and chunk.meta:
@@ -259,6 +325,9 @@ class ChunkingService:
                         prov = item.prov[0]
                         if hasattr(prov, "page_no"):
                             meta["page_number"] = prov.page_no
+                        bbox = _extract_bbox(prov)
+                        if bbox:
+                            meta["bbox"] = bbox
 
             result.append({"id": str(uuid.uuid4()), "content": text, "metadata": meta})
         return result
@@ -271,6 +340,7 @@ class ChunkingService:
         file_name: str,
         document_id: str = "",
         file_type: str = "text",
+        owner_user_id: str | None = None,
     ) -> List[dict]:
         """
         Route to the correct chunking strategy based on file_type.
@@ -281,19 +351,50 @@ class ChunkingService:
         ext = Path(file_name).suffix.lower()
 
         # Docling rich document (PDF, DOCX, PPTX, images)
+        owner_meta = {"user_id": owner_user_id} if owner_user_id else None
+
         if file_type == "docling" or isinstance(input_data, (DoclingDocument, dict)):
-            return self._chunk_docling(input_data, file_name, document_id)
+            chunks = self._chunk_docling(input_data, file_name, document_id)
+        elif file_type == "code" or ext in _EXT_LANGUAGE:
+            chunks = self.chunk_source_code(str(input_data), file_name, document_id)
+        elif ext in {".md", ".txt"} or file_type == "text":
+            chunks = self._chunk_headings(str(input_data), file_name, document_id)
+        else:
+            chunks = self._simple_split(str(input_data), file_name, document_id)
 
-        # Source code
-        if file_type == "code" or ext in _EXT_LANGUAGE:
-            return self.chunk_source_code(str(input_data), file_name, document_id)
+        if owner_meta:
+            for chunk in chunks:
+                chunk["metadata"].update(owner_meta)
+        return chunks
 
-        # Markdown / plain text — heading-aware
-        if ext in {".md", ".txt"} or file_type == "text":
-            return self._chunk_headings(str(input_data), file_name, document_id)
 
-        # Generic fallback with overlap
-        return self._simple_split(str(input_data), file_name, document_id)
+def _extract_bbox(prov: object) -> dict[str, float] | None:
+    """Normalize Docling provenance bounding boxes for client-side PDF highlight."""
+    raw = getattr(prov, "bbox", None)
+    if raw is None:
+        return None
+
+    def _pair(obj: object, keys: tuple[str, str, str, str]) -> dict[str, float] | None:
+        try:
+            vals = [float(getattr(obj, k)) for k in keys]
+            return dict(zip(("l", "t", "r", "b"), vals))
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    if isinstance(raw, dict):
+        if all(k in raw for k in ("l", "t", "r", "b")):
+            return {k: float(raw[k]) for k in ("l", "t", "r", "b")}
+        if all(k in raw for k in ("x0", "y0", "x1", "y1")):
+            x0, y0, x1, y1 = (float(raw[k]) for k in ("x0", "y0", "x1", "y1"))
+            return {"l": x0, "t": y0, "r": x1, "b": y1}
+
+    for keys in (("l", "t", "r", "b"), ("x0", "y0", "x1", "y1")):
+        parsed = _pair(raw, keys)
+        if parsed:
+            if keys[0] == "x0":
+                return parsed
+            return parsed
+    return None
 
 
 chunking_service = ChunkingService()

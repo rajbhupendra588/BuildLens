@@ -44,12 +44,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FileIcon } from "@/components/library/file-icon";
 import { UploadDropzone } from "@/components/library/upload-dropzone";
 import { useDocumentLibrary } from "@/hooks/use-document-library";
-import { documentFileUrl } from "@/lib/api";
+import { fetchDocumentBlob } from "@/lib/api";
+import { AuthenticatedDocumentImage } from "@/components/documents/authenticated-document-image";
 import { DocumentPreviewPane } from "@/components/documents/document-preview-pane";
 import { formatFileSize, isImageFileName } from "@/lib/collect-dropped-files";
 import { cn } from "@/lib/utils";
 import { LibraryAskDialog } from "@/components/library/library-ask-dialog";
 import { LibraryListControls } from "@/components/library/library-list-controls";
+import { UserMenu } from "@/components/auth/user-menu";
 import { MAX_LIBRARY_FILES, maxDocumentSizeLabel } from "@/lib/document-upload";
 import {
   filterLibraryDocuments,
@@ -177,6 +179,7 @@ export function DocumentLibrary() {
                 />
                 Refresh
               </Button>
+              <UserMenu />
             </div>
           </div>
 
@@ -365,6 +368,10 @@ export function DocumentLibrary() {
       <FilePreviewDialog
         doc={previewDoc}
         onOpenChange={(open) => !open && setPreviewDoc(null)}
+        onChat={(doc) => {
+          setPreviewDoc(null);
+          setAskDoc(doc);
+        }}
       />
 
       <Dialog
@@ -418,6 +425,16 @@ export function DocumentLibrary() {
             </Button>
             {legacyDoc ? (
               <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setAskDoc(legacyDoc);
+                    setLegacyDoc(null);
+                  }}
+                >
+                  <MessageSquare className="mr-2 size-4" />
+                  Chat about this file
+                </Button>
                 <Button
                   variant="destructive"
                   onClick={() => {
@@ -501,11 +518,19 @@ function FileActions({
           size="icon"
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
           title="Download"
-          asChild
+          type="button"
+          onClick={() => {
+            void fetchDocumentBlob(doc.document_id).then((blob) => {
+              const url = URL.createObjectURL(blob);
+              const anchor = document.createElement("a");
+              anchor.href = url;
+              anchor.download = doc.file_name;
+              anchor.click();
+              URL.revokeObjectURL(url);
+            });
+          }}
         >
-          <a href={documentFileUrl(doc.document_id)} download={doc.file_name}>
-            <Download className="size-4" />
-          </a>
+          <Download className="size-4" />
         </Button>
       ) : null}
       <Button
@@ -557,11 +582,11 @@ function LibraryFileCard({
           </span>
         ) : null}
         {showThumb ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={documentFileUrl(doc.document_id)}
+          <AuthenticatedDocumentImage
+            documentId={doc.document_id}
             alt={doc.file_name}
             className="size-full object-cover"
+            loadingClassName="size-full"
           />
         ) : (
           <FileIcon name={doc.file_name} className="size-10" />
@@ -596,17 +621,32 @@ function LibraryFileCard({
 function FilePreviewDialog({
   doc,
   onOpenChange,
+  onChat,
 }: {
   doc: LibraryDocument | null;
   onOpenChange: (open: boolean) => void;
+  onChat: (doc: LibraryDocument) => void;
 }) {
   return (
     <Dialog open={!!doc} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col overflow-hidden p-0">
         <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle className="truncate pr-8">
-            {doc?.file_name ?? "Preview"}
-          </DialogTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3 pr-8">
+            <DialogTitle className="min-w-0 flex-1 truncate text-left">
+              {doc?.file_name ?? "Preview"}
+            </DialogTitle>
+            {doc ? (
+              <Button
+                type="button"
+                size="sm"
+                className="shrink-0"
+                onClick={() => onChat(doc)}
+              >
+                <MessageSquare className="mr-2 size-4" />
+                Chat about this file
+              </Button>
+            ) : null}
+          </div>
         </DialogHeader>
         {doc ? (
           <DocumentPreviewPane

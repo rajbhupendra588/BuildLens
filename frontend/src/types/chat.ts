@@ -1,19 +1,40 @@
+export interface SourceBBox {
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+}
+
 export interface SourceItem {
   document_id?: string | null;
+  chunk_id?: string | null;
   file_name: string;
   score: number;
   snippet: string;
   page_number?: number | null;
   section_title?: string | null;
+  paragraph_index?: number | null;
+  line_start?: number | null;
+  line_end?: number | null;
+  location_label?: string | null;
+  source_index?: number | null;
   language?: string | null;
   element_type?: string | null;
   is_image?: boolean;
+  bbox?: SourceBBox | null;
+  collection?: string | null;
 }
 
 export interface MediaAttachment {
-  document_id: string;
-  file_name: string;
+  document_id?: string;
+  file_name?: string;
   media_type: string;
+  report_id?: string;
+  title?: string;
+  page_count?: number | null;
+  document_names?: string[];
+  download_name?: string | null;
+  limitations?: string | null;
 }
 
 export interface Message {
@@ -40,6 +61,7 @@ export const MODE_LABELS: Record<string, string> = {
   STUDY_GUIDE: "Study Guide",
   INFOGRAPHIC: "Infographic",
   DASHBOARD: "Visual Dashboard",
+  DOCUMENT_REPORT: "Document Report",
   DATA_ANALYST: "Data Analyst",
   CREATIVE: "Creative Synthesizer",
 };
@@ -54,6 +76,7 @@ export const MODE_ICONS: Record<string, string> = {
   STUDY_GUIDE: "📚",
   INFOGRAPHIC: "🎨",
   DASHBOARD: "📊",
+  DOCUMENT_REPORT: "📄",
   DATA_ANALYST: "📈",
   CREATIVE: "💡",
 };
@@ -85,6 +108,8 @@ export interface ChatSession {
   provider: string;
   model_name: string;
   created_at: string;
+  updated_at?: string;
+  is_pinned?: boolean;
 }
 
 export interface ModelItem {

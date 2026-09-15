@@ -1,13 +1,18 @@
-import { Suspense } from "react";
-import { ChatInterface } from "@/components/chat/chat-interface";
-import { SidebarInset } from "@/components/ui/sidebar";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/use-auth";
+import { AuthSplash } from "@/components/auth/require-auth";
 
 export default function Home() {
-  return (
-    <SidebarInset className="flex flex-col h-svh overflow-hidden bg-background">
-      <Suspense fallback={null}>
-        <ChatInterface />
-      </Suspense>
-    </SidebarInset>
-  );
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    router.replace(user ? "/app" : "/login");
+  }, [user, loading, router]);
+
+  return <AuthSplash />;
 }

@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { Message, SourceItem } from "@/types/chat";
 import { MessageMediaGallery } from "./message-media-gallery";
-import { documentFileUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   formatChatDay,
@@ -13,21 +12,20 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  Sparkles,
   Copy,
   Check,
   Code2,
-  FileText,
-  FileCode,
-  FileSpreadsheet,
-  Image,
-  File,
-  ChevronDown,
-  ChevronUp,
-  BookOpen,
   Pencil,
   Undo2,
 } from "lucide-react";
+import { UserMessage } from "@/components/enterprise-chat/user-message";
+import { CitationList } from "@/components/enterprise-chat/citation-list";
+import { AnswerActions } from "@/components/enterprise-chat/answer-actions";
+import { ConflictState } from "@/components/enterprise-chat/conflict-state";
+import { ErrorState } from "@/components/enterprise-chat/error-state";
+import { stripTrailingSourcesSection } from "@/lib/strip-message-sources-section";
+import { detectConcreteGradeConflicts } from "@/lib/source-conflicts";
+import { useChatDocumentPreview } from "./chat-document-preview-context";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -61,6 +59,10 @@ import {
 } from "@/lib/detect-ascii-art";
 import { markdownCodeText } from "@/lib/markdown-code-text";
 import { looksLikeInfographicJson } from "@/lib/parse-infographic";
+import { ReportCard } from "@/components/enterprise-chat/report-card";
+import { isReportMedia } from "@/types/report";
+import { useReportStore } from "@/hooks/use-report-store";
+import { fetchReport, fetchReportPdfBlob, logApiError } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // ModeBadge — color-coded intent pill rendered below the AI avatar
@@ -85,6 +87,8 @@ const MODE_COLORS: Record<string, string> = {
     "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/40 dark:text-fuchsia-400 dark:border-fuchsia-800",
   DASHBOARD:
     "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-400 dark:border-cyan-800",
+  DOCUMENT_REPORT:
+    "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-400 dark:border-sky-800",
   DATA_ANALYST:
     "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800",
   CREATIVE:
@@ -198,211 +202,6 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 // Source card helpers
 // ---------------------------------------------------------------------------
 
-function getFileIcon(fileName: string) {
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
-  const codeExts = new Set([
-    "py",
-    "pyw",
-    "js",
-    "jsx",
-    "mjs",
-    "ts",
-    "tsx",
-    "java",
-    "kt",
-    "go",
-    "rs",
-    "c",
-    "h",
-    "cpp",
-    "rb",
-    "php",
-    "swift",
-    "dart",
-    "sh",
-    "sql",
-    "r",
-    "scala",
-    "html",
-    "htm",
-    "css",
-    "scss",
-    "yaml",
-    "yml",
-    "toml",
-    "xml",
-    "lua",
-    "tf",
-  ]);
-  const sheetExts = new Set(["csv", "xlsx", "xls"]);
-  const imageExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg"]);
-
-  if (imageExts.has(ext))
-    return <Image className="size-3.5 text-emerald-500 shrink-0" />;
-  if (sheetExts.has(ext))
-    return <FileSpreadsheet className="size-3.5 text-green-600 shrink-0" />;
-  if (codeExts.has(ext))
-    return <FileCode className="size-3.5 text-violet-500 shrink-0" />;
-  if (ext === "pdf")
-    return <FileText className="size-3.5 text-red-500 shrink-0" />;
-  if (["doc", "docx", "pptx", "txt", "md"].includes(ext))
-    return <FileText className="size-3.5 text-blue-500 shrink-0" />;
-  return <File className="size-3.5 text-muted-foreground shrink-0" />;
-}
-
-function scoreColor(score: number) {
-  if (score >= 0.75)
-    return "text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-800";
-  if (score >= 0.5)
-    return "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/40 dark:border-amber-800";
-  return "text-muted-foreground bg-muted border-border";
-}
-
-function SourceCard({
-  source,
-  onOpen,
-}: {
-  source: SourceItem;
-  onOpen?: (source: SourceItem) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const imagePreview =
-    source.is_image && source.document_id
-      ? documentFileUrl(source.document_id)
-      : null;
-
-  const meta: string[] = [];
-  if (source.page_number) meta.push(`Page ${source.page_number}`);
-  if (source.section_title) meta.push(source.section_title);
-  if (source.language) meta.push(source.language);
-
-  return (
-    <div className="rounded-lg border bg-muted/30 p-3 text-xs flex flex-col gap-1.5 hover:bg-muted/50 transition-colors">
-      {/* File name + score */}
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-primary"
-          disabled={!source.document_id || !onOpen}
-          onClick={() => source.document_id && onOpen?.(source)}
-        >
-          {getFileIcon(source.file_name)}
-          <span className="font-medium truncate">{source.file_name}</span>
-        </button>
-        <span
-          className={cn(
-            "shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[10px] font-semibold",
-            scoreColor(source.score),
-          )}
-        >
-          {(source.score * 100).toFixed(0)}%
-        </span>
-      </div>
-
-      {/* Page / section / language */}
-      {meta.length > 0 && (
-        <p className="text-muted-foreground truncate">{meta.join(" · ")}</p>
-      )}
-
-      {imagePreview ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={imagePreview}
-          alt={source.file_name}
-          className="mt-1 max-h-32 w-full rounded-md border object-contain bg-muted/50"
-          loading="lazy"
-        />
-      ) : null}
-
-      {/* Snippet */}
-      {source.snippet && (
-        <div>
-          <p
-            className={cn(
-              "text-muted-foreground leading-relaxed",
-              !expanded && "line-clamp-2",
-            )}
-          >
-            {source.snippet}
-          </p>
-          {source.snippet.length > 120 && (
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="mt-0.5 text-primary/70 hover:text-primary flex items-center gap-0.5 transition-colors"
-            >
-              {expanded ? (
-                <>
-                  <ChevronUp className="size-3" />
-                  Less
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="size-3" />
-                  More
-                </>
-              )}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SourceCards — collapsible list below AI answer
-// ---------------------------------------------------------------------------
-const INITIAL_VISIBLE = 3;
-
-function SourceCards({
-  sources,
-  onOpenSource,
-}: {
-  sources: SourceItem[];
-  onOpenSource?: (source: SourceItem) => void;
-}) {
-  const [showAll, setShowAll] = useState(false);
-
-  if (!sources || sources.length === 0) return null;
-
-  const visible = showAll ? sources : sources.slice(0, INITIAL_VISIBLE);
-  const hidden = sources.length - INITIAL_VISIBLE;
-
-  return (
-    <div className="mt-4 pt-3 border-t border-border/60">
-      <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground font-medium">
-        <BookOpen className="size-3.5" />
-        {sources.length === 1 ? "1 source" : `${sources.length} sources`}
-      </div>
-
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {visible.map((src, i) => (
-          <SourceCard key={i} source={src} onOpen={onOpenSource} />
-        ))}
-      </div>
-
-      {hidden > 0 && (
-        <button
-          onClick={() => setShowAll((v) => !v)}
-          className="mt-2 text-xs text-primary/70 hover:text-primary flex items-center gap-1 transition-colors"
-        >
-          {showAll ? (
-            <>
-              <ChevronUp className="size-3" />
-              Show fewer sources
-            </>
-          ) : (
-            <>
-              <ChevronDown className="size-3" />
-              Show {hidden} more source{hidden > 1 ? "s" : ""}
-            </>
-          )}
-        </button>
-      )}
-    </div>
-  );
-}
-
 function MessageTimestamp({ iso, align }: { iso: string; align: "left" | "right" }) {
   const stamp = formatChatStamp(iso);
   if (!stamp) return null;
@@ -493,6 +292,8 @@ function MarkdownHeading({
 
 export function ChatMessageItem({
   message,
+  scopeLabel,
+  reportScopeLabel,
   onOpenSource,
   onEdit,
   onReviseBlock,
@@ -500,13 +301,19 @@ export function ChatMessageItem({
   actionsDisabled,
 }: {
   message: Message;
-  onOpenSource?: (source: SourceItem) => void;
+  scopeLabel?: string;
+  reportScopeLabel?: string;
+  onOpenSource?: (source: SourceItem, citationIndex: number) => void;
   onEdit?: (messageId: string, content: string) => void | Promise<void>;
   onReviseBlock?: (request: BlockReviseRequest) => void | Promise<void>;
   onRollback?: (messageId: string) => void | Promise<void>;
   actionsDisabled?: boolean;
 }) {
+  const { activeCitationIndex } = useChatDocumentPreview();
+  const openViewer = useReportStore((s) => s.openViewer);
+  const setActiveReport = useReportStore((s) => s.setActiveReport);
   const [copied, setCopied] = useState(false);
+  const [sourcesPanelOpen, setSourcesPanelOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const [confirmRollback, setConfirmRollback] = useState(false);
@@ -633,10 +440,9 @@ export function ChatMessageItem({
   // User message
   if (!isAi) {
     return (
-      <div className="group/msg flex w-full justify-end py-2">
-        <div className="flex max-w-[min(720px,85%)] min-w-0 flex-col items-end gap-1">
-          {isEditing ? (
-            <div className="w-full min-w-[min(280px,85vw)] rounded-2xl rounded-br-md border bg-card p-3 shadow-sm">
+      <div className="group/msg w-full border-b border-border/30 last:border-b-0">
+        {isEditing ? (
+            <div className="w-full rounded-md border bg-[var(--enterprise-surface)] p-3">
               <textarea
                 ref={editRef}
                 value={draft}
@@ -680,42 +486,82 @@ export function ChatMessageItem({
               </div>
             </div>
           ) : (
-            <div className="w-full min-w-0 rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground shadow-sm whitespace-pre-wrap">
-              {message.content}
-            </div>
+            <UserMessage
+              content={message.content}
+              scopeLabel={scopeLabel}
+              reportScope={
+                /^\/report\b/i.test(message.content)
+                  ? reportScopeLabel
+                  : undefined
+              }
+              timestamp={
+                <MessageTimestamp iso={message.created_at} align="left" />
+              }
+              actions={!isEditing ? actionBar : null}
+            />
           )}
-          <div className="flex items-center gap-1.5">
-            <MessageTimestamp iso={message.created_at} align="right" />
-            {!isEditing ? actionBar : null}
-          </div>
-        </div>
         {rollbackDialog}
       </div>
     );
   }
 
-  const markdownContent = wrapAsciiArtBlocksInMarkdown(message.content ?? "");
+  const sources = message.sources ?? [];
+  const reportMedia = (message.media ?? []).find(isReportMedia);
+  const conflict = detectConcreteGradeConflicts(sources);
+  const noEvidence =
+    !reportMedia &&
+    sources.length === 0 &&
+    (message.content.length === 0 ||
+      /not found|couldn't find|no relevant|insufficient evidence|no evidence/i.test(
+        message.content,
+      ));
+
+  const rawContent = message.content ?? "";
+  const displayContent = stripTrailingSourcesSection(rawContent);
+  const markdownContent = wrapAsciiArtBlocksInMarkdown(displayContent);
 
   // AI message
   return (
-    <div className="group/msg flex w-full gap-3 py-4">
+    <div className="group/msg w-full py-3 md:py-4 border-b border-border/30 last:border-b-0">
       {rollbackDialog}
-      <div className="flex flex-col items-center gap-1.5 shrink-0 mt-0.5">
-        <div className="flex size-8 items-center justify-center rounded-lg border bg-card text-primary shadow-sm">
-          <Sparkles className="size-4" />
-        </div>
-        {/* {message.detectedMode && message.modeLabel && message.modeIcon && (
-          <ModeBadge
-            mode={message.detectedMode}
-            label={message.modeLabel}
-            icon={message.modeIcon}
-          />
-        )} */}
-      </div>
-
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <div className="rounded-xl border bg-card px-4 py-3 text-sm leading-7 text-foreground shadow-sm">
+      <div className="min-w-0">
+        <p className="sr-only">Answer</p>
+        {noEvidence ? (
+          <ErrorState kind="no_evidence" className="mb-3" />
+        ) : null}
+        {conflict ? <ConflictState conflict={conflict} className="mb-3" /> : null}
+        {!noEvidence ? (
+        <div className="rounded-md border border-border/80 bg-[var(--enterprise-elevated)] px-4 py-3 text-[15px] leading-[1.6] text-foreground">
+          {reportMedia ? (
+            <ReportCard
+              media={reportMedia}
+              onOpen={() => {
+                void fetchReport(reportMedia.report_id)
+                  .then(openViewer)
+                  .catch((error) => logApiError("Open report failed", error));
+              }}
+              onAsk={() => {
+                setActiveReport(
+                  reportMedia.report_id,
+                  reportMedia.title ?? "Generated Report",
+                );
+                document.getElementById("chat-composer-input")?.focus();
+              }}
+              onDownload={() => {
+                void fetchReportPdfBlob(reportMedia.report_id)
+                  .then((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download =
+                      reportMedia.download_name || "BuildLens_Report.pdf";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  })
+                  .catch((error) => logApiError("Download report failed", error));
+              }}
+            />
+          ) : null}
           <MessageMediaGallery media={message.media ?? []} />
           <BlockReviseProvider
             disabled={actionsDisabled}
@@ -892,18 +738,35 @@ export function ChatMessageItem({
           </ReactMarkdown>
           </BlockReviseProvider>
         </div>
+        ) : null}
 
-        <div className="mt-1.5 flex items-center gap-1.5">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <MessageTimestamp iso={message.created_at} align="left" />
-          {actionBar}
+          <AnswerActions
+            content={displayContent}
+            sources={sources}
+            disabled={actionsDisabled}
+            onOpenDocument={(src) =>
+              src.document_id && onOpenSource?.(src, 1)
+            }
+            onViewSources={() => setSourcesPanelOpen(true)}
+          />
         </div>
 
-        {/* Source citation cards */}
-        <SourceCards
-          sources={message.sources ?? []}
+        <CitationList
+          sources={sources}
+          activeIndex={activeCitationIndex}
           onOpenSource={onOpenSource}
+          open={sourcesPanelOpen}
+          onOpenChange={setSourcesPanelOpen}
+          onOpenInPanel={() => {
+            setSourcesPanelOpen(true);
+            const first = sources.find((s) => s.document_id);
+            if (first) onOpenSource?.(first, first.source_index ?? 1);
+          }}
         />
       </div>
     </div>
   );
 }
+

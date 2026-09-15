@@ -49,7 +49,8 @@ export function useDocumentLibrary() {
         const hint = isTransientNetworkError(error)
           ? "The API is busy indexing—try Refresh in a moment."
           : "Could not load the document library.";
-        console.warn(hint, error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`${hint} ${message}`);
       }
       return false;
     } finally {
@@ -161,7 +162,7 @@ export function useDocumentLibrary() {
     setIsRestoring(true);
     try {
       await apiRequest(`/documents/${doc.document_id}`, { method: "DELETE" });
-      await uploadAndIndexDocument(file);
+      await uploadAndIndexDocument(file, { waitForFullIndex: true });
       await fetchDocs();
       notifyDocumentsChanged();
       toast.success(`${file.name} is stored and ready for preview.`);

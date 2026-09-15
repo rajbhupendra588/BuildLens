@@ -36,8 +36,9 @@ class DocumentStorageService:
         chunk_size = _STREAM_CHUNK()
         max_bytes = _MAX_BYTES()
 
+        write_buffer = max(chunk_size, 1024 * 1024)
         try:
-            with path.open("wb") as out:
+            with path.open("wb", buffering=write_buffer) as out:
                 while True:
                     chunk = await upload.read(chunk_size)
                     if not chunk:

@@ -117,6 +117,60 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
+function FlowSteps({
+  steps,
+}: {
+  steps: { id: string; label: string }[];
+}) {
+  const count = steps.length;
+  const useCompactGrid = count > 6;
+
+  if (useCompactGrid) {
+    return (
+      <ol className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+        {steps.map((step, i) => (
+          <li
+            key={step.id}
+            className="flex min-w-0 items-start gap-3 rounded-xl border border-border/80 bg-card px-3 py-3 shadow-sm"
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+              {i + 1}
+            </span>
+            <p className="min-w-0 flex-1 text-sm leading-snug text-foreground">
+              {step.label}
+            </p>
+          </li>
+        ))}
+      </ol>
+    );
+  }
+
+  return (
+    <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <ol className="flex min-w-min flex-nowrap items-stretch gap-2 sm:gap-3">
+        {steps.map((step, i) => (
+          <li
+            key={step.id}
+            className="flex w-[10.5rem] shrink-0 items-stretch gap-2 sm:w-[11.5rem]"
+          >
+            <div className="flex min-h-full min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border/80 bg-card px-3 py-3 shadow-sm">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                {i + 1}
+              </span>
+              <p className="min-w-0 text-sm leading-snug text-foreground">
+                {step.label}
+              </p>
+            </div>
+            {i < steps.length - 1 ? (
+              <ArrowRight className="mt-8 hidden size-4 shrink-0 text-muted-foreground lg:block" />
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function infographicBlockTitle(block: InfographicBlock, index: number): string {
   if ("title" in block && block.title) return block.title;
   const fallback: Record<InfographicBlock["type"], string> = {
@@ -340,29 +394,10 @@ function BlockRenderer({ block }: { block: InfographicBlock }) {
       );
     case "flow":
       return (
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3">
           {block.title ? <SectionLabel>{block.title}</SectionLabel> : null}
           {block.steps && block.steps.length > 0 ? (
-            <ol className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
-              {block.steps.map((step, i) => (
-                <li
-                  key={step.id}
-                  className="flex min-w-0 flex-1 items-stretch gap-2"
-                >
-                  <div className="flex min-w-0 flex-1 items-start gap-3 rounded-xl border border-border/80 bg-card px-3 py-3 shadow-sm">
-                    <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-                      {i + 1}
-                    </span>
-                    <p className="text-sm leading-snug text-foreground">
-                      {step.label}
-                    </p>
-                  </div>
-                  {i < block.steps!.length - 1 ? (
-                    <ArrowRight className="mt-5 hidden size-4 shrink-0 text-muted-foreground sm:block" />
-                  ) : null}
-                </li>
-              ))}
-            </ol>
+            <FlowSteps steps={block.steps} />
           ) : (
             <MermaidDiagram chart={block.mermaid} />
           )}
@@ -416,6 +451,265 @@ function BlockRenderer({ block }: { block: InfographicBlock }) {
     default:
       return null;
   }
+}
+
+type DashboardSections = {
+  stories: InfographicBlock[];
+  metricItems: { label: string; value: string; hint?: string }[];
+  charts: InfographicBlock[];
+  tables: InfographicBlock[];
+  timelines: InfographicBlock[];
+  highlights: InfographicBlock[];
+  others: InfographicBlock[];
+  takeaways: InfographicBlock[];
+};
+
+function partitionDashboardBlocks(blocks: InfographicBlock[]): DashboardSections {
+  const sections: DashboardSections = {
+    stories: [],
+    metricItems: [],
+    charts: [],
+    tables: [],
+    timelines: [],
+    highlights: [],
+    others: [],
+    takeaways: [],
+  };
+  for (const block of blocks) {
+    switch (block.type) {
+      case "story":
+        sections.stories.push(block);
+        break;
+      case "metrics":
+        sections.metricItems.push(...block.items);
+        break;
+      case "chart":
+        sections.charts.push(block);
+        break;
+      case "table":
+        sections.tables.push(block);
+        break;
+      case "timeline":
+        sections.timelines.push(block);
+        break;
+      case "highlight":
+        sections.highlights.push(block);
+        break;
+      case "takeaways":
+        sections.takeaways.push(block);
+        break;
+      default:
+        sections.others.push(block);
+        break;
+    }
+  }
+  return sections;
+}
+
+function DashboardCanvas({
+  data,
+  onCopyJson,
+  copied,
+}: {
+  data: InfographicDocument;
+  onCopyJson: () => void;
+  copied: boolean;
+}) {
+  const sections = useMemo(
+    () => partitionDashboardBlocks(data.blocks),
+    [data.blocks],
+  );
+
+  return (
+    <article className="not-prose -mx-1 my-5 overflow-hidden rounded-xl border border-[var(--enterprise-strong-border)] bg-[var(--enterprise-surface)] shadow-xl ring-1 ring-black/20">
+      <header className="relative border-b border-[var(--enterprise-border)] bg-[var(--enterprise-elevated)] px-5 py-6 sm:px-7 sm:py-7">
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(91,159,212,0.12),transparent_55%)]" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--enterprise-accent)]">
+              Executive command dashboard
+            </p>
+            <h3 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              {data.title}
+            </h3>
+            {data.subtitle ? (
+              <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
+                {data.subtitle}
+              </p>
+            ) : null}
+          </div>
+          {data.meta && data.meta.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {data.meta.map((tag, i) => (
+                <span
+                  key={i}
+                  className="rounded-md border border-border/80 bg-background/40 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="space-y-8 px-4 py-6 sm:px-6 sm:py-8">
+        {sections.stories.map((block, i) => (
+          <EditableBlockFrame
+            key={`story-${i}`}
+            target={{
+              kind: "infographic",
+              title: infographicBlockTitle(block, i),
+              type: block.type,
+              index: i,
+            }}
+          >
+            <BlockRenderer block={block} />
+          </EditableBlockFrame>
+        ))}
+
+        {sections.metricItems.length > 0 ? (
+          <section>
+            <SectionLabel>Key indicators</SectionLabel>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {sections.metricItems.map((item, i) => (
+                <div
+                  key={i}
+                  className="rounded-lg border border-[var(--enterprise-border)] bg-[var(--enterprise-elevated)] px-4 py-3.5 shadow-sm"
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {item.label}
+                  </p>
+                  <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                    {item.value}
+                  </p>
+                  {item.hint ? (
+                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                      {item.hint}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {sections.charts.length > 0 ? (
+          <section>
+            <SectionLabel>Analytics</SectionLabel>
+            <div className="mt-3 grid gap-6 lg:grid-cols-2">
+              {sections.charts.map((block, i) => (
+                <EditableBlockFrame
+                  key={`chart-${i}`}
+                  className="rounded-lg border border-border/60 bg-card/50 p-3"
+                  target={{
+                    kind: "infographic",
+                    title: infographicBlockTitle(block, i),
+                    type: block.type,
+                    index: i,
+                  }}
+                >
+                  <BlockRenderer block={block} />
+                </EditableBlockFrame>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {sections.tables.map((block, i) => (
+          <EditableBlockFrame
+            key={`table-${i}`}
+            target={{
+              kind: "infographic",
+              title: infographicBlockTitle(block, i),
+              type: block.type,
+              index: i,
+            }}
+          >
+            <BlockRenderer block={block} />
+          </EditableBlockFrame>
+        ))}
+
+        {sections.timelines.map((block, i) => (
+          <EditableBlockFrame
+            key={`timeline-${i}`}
+            target={{
+              kind: "infographic",
+              title: infographicBlockTitle(block, i),
+              type: block.type,
+              index: i,
+            }}
+          >
+            <BlockRenderer block={block} />
+          </EditableBlockFrame>
+        ))}
+
+        {sections.highlights.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {sections.highlights.map((block, i) => (
+              <EditableBlockFrame
+                key={`highlight-${i}`}
+                target={{
+                  kind: "infographic",
+                  title: infographicBlockTitle(block, i),
+                  type: block.type,
+                  index: i,
+                }}
+              >
+                <BlockRenderer block={block} />
+              </EditableBlockFrame>
+            ))}
+          </div>
+        ) : null}
+
+        {sections.others.map((block, i) => (
+          <EditableBlockFrame
+            key={`other-${i}`}
+            target={{
+              kind: "infographic",
+              title: infographicBlockTitle(block, i),
+              type: block.type,
+              index: i,
+            }}
+          >
+            <BlockRenderer block={block} />
+          </EditableBlockFrame>
+        ))}
+
+        {sections.takeaways.map((block, i) => (
+          <EditableBlockFrame
+            key={`takeaways-${i}`}
+            target={{
+              kind: "infographic",
+              title: infographicBlockTitle(block, i),
+              type: block.type,
+              index: i,
+            }}
+          >
+            <BlockRenderer block={block} />
+          </EditableBlockFrame>
+        ))}
+      </div>
+
+      <div className="flex justify-end border-t border-border/70 bg-[var(--enterprise-elevated)]/50 px-4 py-2.5">
+        <button
+          type="button"
+          onClick={onCopyJson}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          {copied ? (
+            <>
+              <Check className="size-3" /> Copied
+            </>
+          ) : (
+            <>
+              <Copy className="size-3" /> Copy JSON
+            </>
+          )}
+        </button>
+      </div>
+    </article>
+  );
 }
 
 function InfographicCanvas({
@@ -577,6 +871,16 @@ export function InfographicBlock({ rawJson }: { rawJson: string }) {
         error={result.error}
         raw={rawJson}
         incomplete={result.incomplete}
+      />
+    );
+  }
+
+  if (result.data.kind === "dashboard") {
+    return (
+      <DashboardCanvas
+        data={result.data}
+        onCopyJson={handleCopy}
+        copied={copied}
       />
     );
   }
