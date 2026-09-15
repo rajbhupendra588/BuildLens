@@ -288,6 +288,8 @@ async def ask_question_stream(
             title_seed = "Study guide"
         elif slash.command == "infographic":
             title_seed = "Infographic summary"
+        elif slash.command == "dashboard":
+            title_seed = "Visual dashboard"
         background_tasks.add_task(
             update_session_title_logic,
             db,
@@ -343,6 +345,7 @@ async def ask_question_stream(
         IntentMode.BRIEFING_DOC,
         IntentMode.STUDY_GUIDE,
         IntentMode.INFOGRAPHIC,
+        IntentMode.DASHBOARD,
     ):
         search_limit = max(top_k, 12)
     if target_document_ids and len(target_document_ids) == 1:

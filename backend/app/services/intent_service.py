@@ -22,6 +22,7 @@ class IntentMode(str, Enum):
     BRIEFING_DOC = "BRIEFING_DOC"
     STUDY_GUIDE = "STUDY_GUIDE"
     INFOGRAPHIC = "INFOGRAPHIC"
+    DASHBOARD = "DASHBOARD"
     DATA_ANALYST = "DATA_ANALYST"
     CREATIVE = "CREATIVE"
 
@@ -34,6 +35,7 @@ _PRIORITY: List[IntentMode] = [
     IntentMode.SUMMARIZER,
     IntentMode.BRIEFING_DOC,
     IntentMode.STUDY_GUIDE,
+    IntentMode.DASHBOARD,
     IntentMode.INFOGRAPHIC,
     IntentMode.CREATIVE,
     IntentMode.DOCUMENT_ANALYST,
@@ -49,6 +51,7 @@ _LABELS: Dict[IntentMode, str] = {
     IntentMode.BRIEFING_DOC: "Briefing Document",
     IntentMode.STUDY_GUIDE: "Study Guide",
     IntentMode.INFOGRAPHIC: "Infographic",
+    IntentMode.DASHBOARD: "Visual Dashboard",
     IntentMode.DATA_ANALYST: "Data Analyst",
     IntentMode.CREATIVE: "Creative Synthesizer",
 }
@@ -62,7 +65,8 @@ _ICONS: Dict[IntentMode, str] = {
     IntentMode.BRIEFING_DOC: "📑",
     IntentMode.STUDY_GUIDE: "📚",
     IntentMode.INFOGRAPHIC: "🎨",
-    IntentMode.DATA_ANALYST: "📊",
+    IntentMode.DASHBOARD: "📊",
+    IntentMode.DATA_ANALYST: "📈",
     IntentMode.CREATIVE: "💡",
 }
 
@@ -95,6 +99,11 @@ _PATTERNS: Dict[IntentMode, List[tuple]] = {
         (re.compile(r"\b(implement(?:ation)?|implementation\s+of|how\s+(?:is|was)\s+(?:this|that)\s+(?:built|implemented|coded))\b", re.I), 2),
         (re.compile(r"\b(codebase|code\s+structure|module\s+structure|class\s+hierarchy|inheritance|polymorphism)\b", re.I), 3),
         (re.compile(r"\b(function|method|class|interface|abstract|mixin|decorator|middleware|handler|controller|service|repository|factory|singleton|adapter|facade|observer|strategy|command|iterator|template)\b", re.I), 1),
+    ],
+    IntentMode.DASHBOARD: [
+        (re.compile(r"\b(visual\s+dashboard|data\s+dashboard|executive\s+dashboard)\b", re.I), 5),
+        (re.compile(r"\b(pie\s+chart|donut\s+chart|bar\s+chart|line\s+chart|charts?\s+and\s+graphs?)\b", re.I), 5),
+        (re.compile(r"\b(kpi|kpis|scorecard)\b", re.I), 3),
     ],
     IntentMode.DATA_ANALYST: [
         (re.compile(r"\b(average|mean|median|mode|standard\s+deviation|std\s+dev|variance)\b", re.I), 3),

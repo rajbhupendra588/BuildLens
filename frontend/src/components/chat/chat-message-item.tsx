@@ -48,6 +48,12 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { MermaidDiagram } from "./mermaid-diagram";
 import { InfographicBlock } from "./infographic-layout";
+import {
+  BlockReviseProvider,
+  EditableBlockFrame,
+  plainTextFromNode,
+  type BlockReviseRequest,
+} from "./block-revise";
 import { AsciiArtBlock } from "./ascii-art-block";
 import {
   looksLikeAsciiArt,
@@ -77,6 +83,8 @@ const MODE_COLORS: Record<string, string> = {
     "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-800",
   INFOGRAPHIC:
     "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/40 dark:text-fuchsia-400 dark:border-fuchsia-800",
+  DASHBOARD:
+    "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-400 dark:border-cyan-800",
   DATA_ANALYST:
     "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800",
   CREATIVE:
@@ -460,16 +468,41 @@ export function ChatDayDivider({ iso }: { iso: string }) {
 // ---------------------------------------------------------------------------
 // ChatMessageItem
 // ---------------------------------------------------------------------------
+function MarkdownHeading({
+  as: Tag,
+  className,
+  children,
+}: {
+  as: "h1" | "h2" | "h3";
+  className: string;
+  children: ReactNode;
+}) {
+  const title = plainTextFromNode(children).trim();
+  if (!title) {
+    return <Tag className={className}>{children}</Tag>;
+  }
+  return (
+    <EditableBlockFrame
+      target={{ kind: "section", title, type: Tag }}
+      className="first:mt-0"
+    >
+      <Tag className={cn(className, "pr-2")}>{children}</Tag>
+    </EditableBlockFrame>
+  );
+}
+
 export function ChatMessageItem({
   message,
   onOpenSource,
   onEdit,
+  onReviseBlock,
   onRollback,
   actionsDisabled,
 }: {
   message: Message;
   onOpenSource?: (source: SourceItem) => void;
   onEdit?: (messageId: string, content: string) => void | Promise<void>;
+  onReviseBlock?: (request: BlockReviseRequest) => void | Promise<void>;
   onRollback?: (messageId: string) => void | Promise<void>;
   actionsDisabled?: boolean;
 }) {
@@ -684,6 +717,10 @@ export function ChatMessageItem({
       <div className="min-w-0 flex-1">
         <div className="rounded-xl border bg-card px-4 py-3 text-sm leading-7 text-foreground shadow-sm">
           <MessageMediaGallery media={message.media ?? []} />
+          <BlockReviseProvider
+            disabled={actionsDisabled}
+            onSubmit={onReviseBlock}
+          >
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -692,23 +729,32 @@ export function ChatMessageItem({
               },
               h1({ children }) {
                 return (
-                  <h1 className="mt-6 mb-3 text-xl font-bold first:mt-0 border-b border-border pb-2">
+                  <MarkdownHeading
+                    as="h1"
+                    className="mt-6 mb-3 text-xl font-bold first:mt-0 border-b border-border pb-2"
+                  >
                     {children}
-                  </h1>
+                  </MarkdownHeading>
                 );
               },
               h2({ children }) {
                 return (
-                  <h2 className="mt-5 mb-2 text-lg font-semibold first:mt-0">
+                  <MarkdownHeading
+                    as="h2"
+                    className="mt-5 mb-2 text-lg font-semibold first:mt-0"
+                  >
                     {children}
-                  </h2>
+                  </MarkdownHeading>
                 );
               },
               h3({ children }) {
                 return (
-                  <h3 className="mt-4 mb-1.5 text-base font-semibold first:mt-0">
+                  <MarkdownHeading
+                    as="h3"
+                    className="mt-4 mb-1.5 text-base font-semibold first:mt-0"
+                  >
                     {children}
-                  </h3>
+                  </MarkdownHeading>
                 );
               },
               code({ node, inline, className, children, ...props }: any) {
@@ -717,7 +763,17 @@ export function ChatMessageItem({
                 if (!inline && match) {
                   const lang = match[1].toLowerCase();
                   if (lang === "mermaid") {
-                    return <MermaidDiagram chart={codeString} />;
+                    return (
+                      <EditableBlockFrame
+                        target={{
+                          kind: "section",
+                          title: "Diagram",
+                          type: "mermaid",
+                        }}
+                      >
+                        <MermaidDiagram chart={codeString} />
+                      </EditableBlockFrame>
+                    );
                   }
                   if (
                     lang === "infographic" ||
@@ -834,6 +890,7 @@ export function ChatMessageItem({
           >
             {markdownContent}
           </ReactMarkdown>
+          </BlockReviseProvider>
         </div>
 
         <div className="mt-1.5 flex items-center gap-1.5">

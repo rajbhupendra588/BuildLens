@@ -8,7 +8,9 @@ import type {
   InfographicHighlightVariant,
 } from "@/types/infographic";
 import { parseInfographicJson } from "@/lib/parse-infographic";
+import { InfographicChart } from "./infographic-charts";
 import { MermaidDiagram } from "./mermaid-diagram";
+import { BlockReviseButton, EditableBlockFrame } from "./block-revise";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -115,8 +117,42 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
+function infographicBlockTitle(block: InfographicBlock, index: number): string {
+  if ("title" in block && block.title) return block.title;
+  const fallback: Record<InfographicBlock["type"], string> = {
+    story: "Overview",
+    highlight: "Highlight",
+    metrics: "Key metrics",
+    chart: "Chart",
+    table: "Table",
+    timeline: "Timeline",
+    formula: "Formula",
+    pillars: "Pillars",
+    flow: "Process",
+    compare: "Comparison",
+    takeaways: "Takeaways",
+  };
+  return fallback[block.type] ?? `Block ${index + 1}`;
+}
+
 function BlockRenderer({ block }: { block: InfographicBlock }) {
   switch (block.type) {
+    case "story":
+      return (
+        <div className="space-y-3">
+          {block.title ? <SectionLabel>{block.title}</SectionLabel> : null}
+          <div className="space-y-3">
+            {block.paragraphs.map((paragraph, i) => (
+              <p
+                key={i}
+                className="text-sm leading-7 text-foreground/90 sm:text-[15px]"
+              >
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        </div>
+      );
     case "highlight": {
       const style = HIGHLIGHT_STYLES[block.variant];
       const Icon = style.icon;
@@ -171,6 +207,83 @@ function BlockRenderer({ block }: { block: InfographicBlock }) {
               </div>
             ))}
           </div>
+        </div>
+      );
+    case "chart":
+      return (
+        <InfographicChart
+          chart={block.chart}
+          title={block.title}
+          subtitle={block.subtitle}
+          unit={block.unit}
+          source={block.source}
+          series={block.series}
+        />
+      );
+    case "table":
+      return (
+        <div className="space-y-3">
+          {block.title ? <SectionLabel>{block.title}</SectionLabel> : null}
+          <div className="overflow-x-auto rounded-xl border border-border/80">
+            <table className="w-full min-w-[420px] border-collapse text-sm">
+              <thead>
+                <tr className="bg-muted/60 text-left">
+                  {block.columns.map((col) => (
+                    <th
+                      key={col}
+                      className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {block.rows.map((row, ri) => (
+                  <tr
+                    key={ri}
+                    className="border-t border-border/70 even:bg-muted/20"
+                  >
+                    {block.columns.map((_, ci) => (
+                      <td
+                        key={ci}
+                        className="px-3 py-2 align-top text-foreground"
+                      >
+                        {row[ci] ?? ""}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {block.caption ? (
+            <p className="text-[11px] text-muted-foreground">{block.caption}</p>
+          ) : null}
+        </div>
+      );
+    case "timeline":
+      return (
+        <div className="space-y-3">
+          {block.title ? <SectionLabel>{block.title}</SectionLabel> : null}
+          <ol className="relative space-y-4 border-l border-border pl-5">
+            {block.items.map((item, i) => (
+              <li key={i} className="relative">
+                <span className="absolute -left-[25px] top-1 size-2.5 rounded-full border-2 border-background bg-primary" />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+                  {item.when}
+                </p>
+                <h4 className="mt-0.5 text-sm font-semibold text-foreground">
+                  {item.title}
+                </h4>
+                {item.text ? (
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    {item.text}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ol>
         </div>
       );
     case "formula":
@@ -229,7 +342,30 @@ function BlockRenderer({ block }: { block: InfographicBlock }) {
       return (
         <div className="space-y-3">
           {block.title ? <SectionLabel>{block.title}</SectionLabel> : null}
-          <MermaidDiagram chart={block.mermaid} />
+          {block.steps && block.steps.length > 0 ? (
+            <ol className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+              {block.steps.map((step, i) => (
+                <li
+                  key={step.id}
+                  className="flex min-w-0 flex-1 items-stretch gap-2"
+                >
+                  <div className="flex min-w-0 flex-1 items-start gap-3 rounded-xl border border-border/80 bg-card px-3 py-3 shadow-sm">
+                    <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                      {i + 1}
+                    </span>
+                    <p className="text-sm leading-snug text-foreground">
+                      {step.label}
+                    </p>
+                  </div>
+                  {i < block.steps!.length - 1 ? (
+                    <ArrowRight className="mt-5 hidden size-4 shrink-0 text-muted-foreground sm:block" />
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <MermaidDiagram chart={block.mermaid} />
+          )}
         </div>
       );
     case "compare":
@@ -282,9 +418,19 @@ function BlockRenderer({ block }: { block: InfographicBlock }) {
   }
 }
 
-function InfographicCanvas({ data }: { data: InfographicDocument }) {
+function InfographicCanvas({
+  data,
+  onCopyJson,
+  copied,
+}: {
+  data: InfographicDocument;
+  onCopyJson: () => void;
+  copied: boolean;
+}) {
   const accent = data.accent ?? "default";
   const header = ACCENT_HEADER[accent];
+  const kindLabel =
+    data.kind === "dashboard" ? "Visual dashboard" : "Infographic";
 
   return (
     <article
@@ -295,20 +441,31 @@ function InfographicCanvas({ data }: { data: InfographicDocument }) {
     >
       <header
         className={cn(
-          "relative bg-gradient-to-br px-5 py-6 text-primary-foreground sm:px-6 sm:py-7",
+          "group/block relative bg-gradient-to-br px-5 py-6 text-primary-foreground sm:px-6 sm:py-7",
           header.gradient,
         )}
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,0.22),transparent_45%)]" />
-        <div className="relative space-y-2">
+        <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
+          <BlockReviseButton
+            tone="onDark"
+            target={{
+              kind: "infographic",
+              title: data.title,
+              type: "header",
+              index: -1,
+            }}
+          />
+        </div>
+        <div className="relative space-y-2 pr-16">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-foreground/80">
-            Infographic
+            {kindLabel}
           </p>
           <h3 className="text-xl font-bold leading-tight sm:text-2xl">
             {data.title}
           </h3>
           {data.subtitle ? (
-            <p className="max-w-2xl text-sm leading-relaxed text-primary-foreground/90 sm:text-[15px]">
+            <p className="max-w-3xl text-sm leading-relaxed text-primary-foreground/90 sm:text-[15px]">
               {data.subtitle}
             </p>
           ) : null}
@@ -329,8 +486,36 @@ function InfographicCanvas({ data }: { data: InfographicDocument }) {
 
       <div className="space-y-5 px-4 py-5 sm:px-5 sm:py-6">
         {data.blocks.map((block, i) => (
-          <BlockRenderer key={i} block={block} />
+          <EditableBlockFrame
+            key={i}
+            className="pt-1"
+            target={{
+              kind: "infographic",
+              title: infographicBlockTitle(block, i),
+              type: block.type,
+              index: i,
+            }}
+          >
+            <BlockRenderer block={block} />
+          </EditableBlockFrame>
         ))}
+      </div>
+      <div className="flex justify-end border-t border-border/70 px-4 py-2.5">
+        <button
+          type="button"
+          onClick={onCopyJson}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          {copied ? (
+            <>
+              <Check className="size-3" /> Copied
+            </>
+          ) : (
+            <>
+              <Copy className="size-3" /> Copy JSON
+            </>
+          )}
+        </button>
       </div>
     </article>
   );
@@ -397,23 +582,10 @@ export function InfographicBlock({ rawJson }: { rawJson: string }) {
   }
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={handleCopy}
-        className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md border border-border/60 bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur hover:text-foreground"
-      >
-        {copied ? (
-          <>
-            <Check className="size-3" /> Copied
-          </>
-        ) : (
-          <>
-            <Copy className="size-3" /> Copy JSON
-          </>
-        )}
-      </button>
-      <InfographicCanvas data={result.data} />
-    </div>
+    <InfographicCanvas
+      data={result.data}
+      onCopyJson={handleCopy}
+      copied={copied}
+    />
   );
 }

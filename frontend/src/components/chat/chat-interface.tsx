@@ -21,6 +21,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getActiveChatSessionId } from "@/lib/active-chat-session";
 import { ensureChatSession } from "@/lib/ensure-chat-session";
 import { collectFilesFromDataTransfer } from "@/lib/collect-dropped-files";
+import { buildBlockRevisePrompt } from "@/lib/revise-block-prompt";
+import type { BlockReviseRequest } from "@/components/chat/block-revise";
 import {
   enqueueDocumentFiles,
 } from "@/stores/upload-queue-store";
@@ -227,6 +229,18 @@ function ChatInterfaceInner() {
     }
   };
 
+  const handleReviseBlock = async (request: BlockReviseRequest) => {
+    if (isTyping) return;
+    const sessionId =
+      getActiveChatSessionId(pathname) ??
+      currentSessionId ??
+      (await ensureSession());
+    if (!sessionId) return;
+    userScrolledRef.current = false;
+    setShowScrollBtn(false);
+    await sendMessage(buildBlockRevisePrompt(request), sessionId);
+  };
+
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
@@ -337,6 +351,7 @@ function ChatInterfaceInner() {
                       message={msg}
                       onOpenSource={handleOpenSource}
                       onEdit={handleEdit}
+                      onReviseBlock={handleReviseBlock}
                       onRollback={handleRollback}
                       actionsDisabled={isTyping}
                     />

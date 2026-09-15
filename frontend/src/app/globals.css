@@ -124,3 +124,10 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Mermaid 11 appends parse-error SVGs to document.body (bomb icons). */
+body > svg[aria-roledescription="error"],
+body > svg[id^="dmermaid"],
+body > svg[id^="mermaid-"] {
+  display: none !important;
+}

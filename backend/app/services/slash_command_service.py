@@ -1,5 +1,5 @@
 """
-Slash commands for BuildLens chat (e.g. /briefingdoc, /studyguide, /infographic).
+Slash commands for BuildLens chat (e.g. /briefingdoc, /studyguide, /infographic, /dashboard).
 
 Parsed before retrieval and intent classification. The user's message text
 is stored as typed; retrieval and LLM user turns may use derived queries.
@@ -31,6 +31,10 @@ _INFOGRAPHIC = re.compile(
     r"^\s*/infographic(?:@\w+)?\s*(.*)$",
     re.I | re.DOTALL,
 )
+_DASHBOARD = re.compile(
+    r"^\s*/dashboard(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
 
 _BRIEFINGDOC_RETRIEVAL_FALLBACK = (
     "executive summary key findings critical details themes deadlines "
@@ -55,8 +59,20 @@ _INFOGRAPHIC_RETRIEVAL_FALLBACK = (
     "summary highlights core concepts outcomes trends comparison milestones"
 )
 _INFOGRAPHIC_LLM_FALLBACK = (
-    "Synthesize my active sources into a highly scannable infographic and visual summary. "
+    "Synthesize my active sources into a detailed Gemini-style infographic: "
+    "narrative overview, KPIs, charts where numbers exist, process/timeline, and takeaways. "
     "Use only files attached to this conversation and the retrieved document context."
+)
+
+_DASHBOARD_RETRIEVAL_FALLBACK = (
+    "key metrics statistics figures percentages counts timeline comparison mix share "
+    "kpis trends distribution breakdown ranking outcomes milestones table data dashboard"
+)
+_DASHBOARD_LLM_FALLBACK = (
+    "Build a professional visual dashboard from my active sources with KPI cards, "
+    "pie/donut composition, bar comparison, supporting table, timeline if dates exist, "
+    "and executive takeaways. Use only attached files and retrieved document context. "
+    "Do not invent numbers."
 )
 
 _SLASH_COMMANDS: Tuple[SlashSpec, ...] = (
@@ -80,6 +96,13 @@ _SLASH_COMMANDS: Tuple[SlashSpec, ...] = (
         "infographic",
         _INFOGRAPHIC_RETRIEVAL_FALLBACK,
         _INFOGRAPHIC_LLM_FALLBACK,
+    ),
+    (
+        _DASHBOARD,
+        IntentMode.DASHBOARD,
+        "dashboard",
+        _DASHBOARD_RETRIEVAL_FALLBACK,
+        _DASHBOARD_LLM_FALLBACK,
     ),
 )
 
@@ -135,3 +158,7 @@ def is_studyguide_command(message: str) -> bool:
 
 def is_infographic_command(message: str) -> bool:
     return _INFOGRAPHIC.match((message or "").strip()) is not None
+
+
+def is_dashboard_command(message: str) -> bool:
+    return _DASHBOARD.match((message or "").strip()) is not None

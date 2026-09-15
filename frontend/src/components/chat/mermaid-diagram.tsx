@@ -3,17 +3,25 @@
 import { useEffect, useId, useRef, useState } from "react";
 import mermaid from "mermaid";
 
-let mermaidInitialized = false;
+const MERMAID_CONFIG = {
+  startOnLoad: false,
+  theme: "neutral" as const,
+  securityLevel: "strict" as const,
+  suppressErrorRendering: true,
+  fontFamily: "var(--font-geist-sans, system-ui, sans-serif)",
+};
 
-function ensureMermaidInit() {
-  if (mermaidInitialized) return;
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: "neutral",
-    securityLevel: "strict",
-    fontFamily: "var(--font-geist-sans, system-ui, sans-serif)",
+function removeMermaidErrorArtifacts(renderId: string) {
+  const ids = [renderId, `d${renderId}`];
+  for (const id of ids) {
+    document.getElementById(id)?.remove();
+  }
+  document.querySelectorAll("body > svg").forEach((svg) => {
+    const text = svg.textContent ?? "";
+    if (text.includes("Syntax error in text") && text.includes("mermaid")) {
+      svg.remove();
+    }
   });
-  mermaidInitialized = true;
 }
 
 export function MermaidDiagram({ chart }: { chart: string }) {
@@ -22,15 +30,20 @@ export function MermaidDiagram({ chart }: { chart: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    ensureMermaidInit();
+    mermaid.initialize(MERMAID_CONFIG);
     const el = containerRef.current;
     if (!el) return;
 
     let cancelled = false;
     const renderId = `mermaid-${reactId}-${Math.random().toString(36).slice(2, 9)}`;
+    const source = chart.trim();
+    if (!source) {
+      setError("empty");
+      return;
+    }
 
     mermaid
-      .render(renderId, chart.trim())
+      .render(renderId, source)
       .then(({ svg, bindFunctions }) => {
         if (cancelled || !containerRef.current) return;
         containerRef.current.innerHTML = svg;
@@ -38,12 +51,14 @@ export function MermaidDiagram({ chart }: { chart: string }) {
         setError(null);
       })
       .catch((err: unknown) => {
+        removeMermaidErrorArtifacts(renderId);
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Could not render diagram");
       });
 
     return () => {
       cancelled = true;
+      removeMermaidErrorArtifacts(renderId);
     };
   }, [chart, reactId]);
 
