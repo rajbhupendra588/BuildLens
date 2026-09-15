@@ -263,18 +263,90 @@ class LLMService:
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
 
+    # Completion cap includes reasoning tokens. 2048 was often spent entirely on
+    # thinking (Ling 3.0, Nemotron), so the stream finished with empty content.
+    _OPENROUTER_MAX_TOKENS = 8192
+    _OPENROUTER_REASONING_MAX_TOKENS = 2048
+
+    @staticmethod
+    def _coerce_text(value: Any) -> str:
+        """Flatten OpenRouter/OpenAI content parts into a single string."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return LLMService._coerce_text(
+                value.get("text")
+                or value.get("content")
+                or value.get("reasoning")
+                or value.get("summary")
+            )
+        if isinstance(value, list):
+            return "".join(LLMService._coerce_text(item) for item in value)
+        return ""
+
+    @staticmethod
+    def _delta_payload(delta: Any) -> Dict[str, Any]:
+        """Read content/reasoning from typed deltas and SDK extra fields."""
+        if delta is None:
+            return {}
+        if isinstance(delta, dict):
+            return delta
+        dump = getattr(delta, "model_dump", None)
+        if callable(dump):
+            try:
+                payload = dump(exclude_none=True)
+            except TypeError:
+                payload = dump()
+            if isinstance(payload, dict):
+                extra = payload.get("model_extra")
+                if isinstance(extra, dict):
+                    merged = {**payload, **extra}
+                    merged.pop("model_extra", None)
+                    return merged
+                return payload
+        payload: Dict[str, Any] = {}
+        extra = getattr(delta, "model_extra", None)
+        if isinstance(extra, dict):
+            payload.update(extra)
+        for key in ("content", "reasoning", "reasoning_content", "reasoning_details"):
+            val = getattr(delta, key, None)
+            if val not in (None, "", []):
+                payload[key] = val
+        return payload
+
     @staticmethod
     def _openrouter_stream_text(delta: Any) -> tuple[str, bool]:
-        """Return (text, is_reasoning). Some models stream chain-of-thought in `reasoning`."""
-        if delta is None:
-            return "", False
-        content = getattr(delta, "content", None) or ""
+        """Return (text, is_reasoning). Reasoning may live in extra SDK fields."""
+        payload = LLMService._delta_payload(delta)
+        content = LLMService._coerce_text(payload.get("content"))
         if content:
             return content, False
-        reasoning = getattr(delta, "reasoning", None) or ""
+        reasoning = LLMService._coerce_text(
+            payload.get("reasoning")
+            or payload.get("reasoning_content")
+            or payload.get("reasoning_details")
+        )
         if reasoning:
             return reasoning, True
         return "", False
+
+    @staticmethod
+    def _visible_answer_from_reasoning(reasoning: str) -> str:
+        """If CoT wraps the answer in think tags, return the part after them."""
+        text = reasoning.strip()
+        if not text:
+            return ""
+        lowered = text.lower()
+        for marker in ("</think>", "</thinking>", "</reasoning>"):
+            idx = lowered.rfind(marker)
+            if idx == -1:
+                continue
+            rest = text[idx + len(marker) :].strip()
+            if rest:
+                return rest
+        return text
 
     async def _stream_openrouter(
         self, model: str, query: str, system: str, api_key: Optional[str] = None
@@ -291,32 +363,56 @@ class LLMService:
                     {"role": "user", "content": query},
                 ],
                 stream=True,
-                max_tokens=2048,
+                max_tokens=self._OPENROUTER_MAX_TOKENS,
+                extra_body={
+                    "reasoning": {
+                        "max_tokens": self._OPENROUTER_REASONING_MAX_TOKENS,
+                    }
+                },
             )
             saw_answer = False
             saw_reasoning = False
+            reasoning_parts: List[str] = []
+            finish_reason: Optional[str] = None
             async for chunk in stream:
                 if not chunk.choices:
                     continue
-                delta = chunk.choices[0].delta
-                text, is_reasoning = self._openrouter_stream_text(delta)
+                choice = chunk.choices[0]
+                reason = getattr(choice, "finish_reason", None)
+                if reason:
+                    finish_reason = reason
+                text, is_reasoning = self._openrouter_stream_text(choice.delta)
                 if not text:
                     continue
                 if is_reasoning:
+                    reasoning_parts.append(text)
                     if not saw_reasoning:
                         saw_reasoning = True
-                        yield f"data: {json.dumps({'type': 'status', 'text': 'Model is reasoning (large Nemotron models can take 1–2 minutes before the reply appears)…'})}\n\n"
+                        yield (
+                            f"data: {json.dumps({'type': 'status', 'text': 'Model is reasoning — the reply will appear next…'})}\n\n"
+                        )
                     continue
                 saw_answer = True
                 yield f"data: {json.dumps({'type': 'content', 'text': text})}\n\n"
 
             if not saw_answer:
-                hint = (
-                    "The model did not return a visible answer "
-                    "(often due to long internal reasoning or provider overload). "
-                    "Try OpenRouter → Ling 3.0 Flash for faster replies."
-                )
-                yield f"data: {json.dumps({'type': 'error', 'content': hint})}\n\n"
+                fallback = self._visible_answer_from_reasoning("".join(reasoning_parts))
+                if fallback:
+                    yield f"data: {json.dumps({'type': 'content', 'text': fallback})}\n\n"
+                else:
+                    if finish_reason == "length":
+                        hint = (
+                            "The model used its token budget on internal reasoning "
+                            "before writing an answer. Send the message again, or "
+                            "switch to a faster model such as OpenRouter → Ling 3.0 Flash."
+                        )
+                    else:
+                        hint = (
+                            "The model did not return a visible answer "
+                            "(often due to long internal reasoning or provider overload). "
+                            "Send the message again, or try OpenRouter → Ling 3.0 Flash."
+                        )
+                    yield f"data: {json.dumps({'type': 'error', 'content': hint})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"

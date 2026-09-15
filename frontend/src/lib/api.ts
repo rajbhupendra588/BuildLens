@@ -49,7 +49,12 @@ export function isTransientNetworkError(error: unknown): boolean {
 
 /** Log without passing Error objects — Next.js overlays TypeError from console.error. */
 export function logApiError(context: string, error: unknown): void {
-  const message = error instanceof Error ? error.message : "Unknown error";
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "Unknown error";
   console.warn(`${context}: ${message}`);
 }
 

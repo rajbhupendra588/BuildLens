@@ -469,6 +469,7 @@ async def ask_question_stream(
         yield f"data: {json.dumps({'type': 'intent', 'mode': intent.mode.value, 'label': intent.label, 'icon': intent.icon})}\n\n"
 
         full_ai_response = ""
+        stream_error = False
         async for chunk_raw in llm_service.generate_answer_stream(
             llm_user_message, context_chunks, history, provider=provider, model=model,
             intent=intent, api_key=api_key,
@@ -486,6 +487,8 @@ async def ask_question_stream(
                     text = data.get("text", "")
                     if text:
                         full_ai_response += text
+                elif data.get("type") == "error":
+                    stream_error = True
             except json.JSONDecodeError as e:
                 print(f"JSON Decode Error: {e} | Raw: {chunk_raw}")
                 continue
@@ -504,7 +507,7 @@ async def ask_question_stream(
                 yield f"data: {json.dumps({'type': 'assistant_saved', 'id': str(assistant_row.id), 'created_at': assistant_row.created_at.isoformat()})}\n\n"
             except Exception as e:
                 print(f"Error saving assistant response: {e}")
-        else:
+        elif not stream_error:
             print("DEBUG: Warning - full_ai_response is empty!")
             err = (
                 "The model returned no answer. Try a faster model "

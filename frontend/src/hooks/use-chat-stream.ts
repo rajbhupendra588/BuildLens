@@ -10,7 +10,7 @@ import {
 } from "@/types/chat";
 import { useRef, useState } from "react";
 import { useChatStore } from "./use-chat-store";
-import { apiStream, apiRequest } from "@/lib/api";
+import { apiStream, apiRequest, logApiError } from "@/lib/api";
 
 export function useChatStream() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -166,7 +166,7 @@ export function useChatStream() {
             }
 
             if (data.type === "error") {
-              console.error("LLM Error:", data.content);
+              logApiError("LLM Error", data.content);
               upsertAssistant(
                 typeof data.content === "string"
                   ? data.content
@@ -213,7 +213,7 @@ export function useChatStream() {
           upsertAssistant(accumulatedContent);
         }
       } else {
-        console.error("Stream error:", error);
+        logApiError("Stream error", error);
       }
     } finally {
       abortControllerRef.current = null;
