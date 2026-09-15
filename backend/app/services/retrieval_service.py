@@ -1,8 +1,13 @@
 import re
+import uuid
 from pathlib import Path
 from typing import List, Dict, Any
 from app.core.config import settings
-from app.services.vector_service import vector_service
+from app.services.source_location_service import (
+    enrich_location_metadata,
+    format_location_label,
+)
+from app.services.vector_service import is_missing_collection_error, vector_service
 from qdrant_client import models
 
 # Meta-questions about the KB itself (file count, list uploads) — not document content.
@@ -237,12 +242,26 @@ class RetrievalService:
             )
         return chunks
 
+    @staticmethod
+    def _filter_chunks_for_user(
+        results: list[dict[str, Any]], owner_user_id: uuid.UUID | None
+    ) -> list[dict[str, Any]]:
+        if owner_user_id is None:
+            return results
+        uid = str(owner_user_id)
+        return [
+            r
+            for r in results
+            if (r.get("metadata") or {}).get("user_id") == uid
+        ]
+
     async def search(
         self,
         query: str,
         limit: int = 5,
         min_score: float = 0.3,
         document_ids: list[str] | None = None,
+        owner_user_id: uuid.UUID | None = None,
     ) -> List[Dict[str, Any]]:
         """Semantic search for relevant chunks.
 
@@ -253,6 +272,10 @@ class RetrievalService:
         When document_ids is set, results are limited to those library files
         (used for conversations opened from a specific document).
         """
+        vector_service.ensure_collection()
+        if not vector_service.collection_exists():
+            return []
+
         query_vector = list(self.model.query_embed([query]))[0].tolist()
 
         query_filter = None
@@ -267,58 +290,84 @@ class RetrievalService:
                 ]
             )
 
-        response = self.client.query_points(
-            collection_name=self.collection_name,
-            query=query_vector,
-            query_filter=query_filter,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-            score_threshold=min_score,
-        )
+        try:
+            response = self.client.query_points(
+                collection_name=self.collection_name,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+                score_threshold=min_score,
+            )
+        except Exception as exc:
+            if is_missing_collection_error(exc):
+                return []
+            raise
 
-        return [
-            {
-                "content": res.payload.get("content"),
-                "score": res.score,
-                "metadata": res.payload.get("metadata"),
-            }
-            for res in response.points
-        ]
+        results: list[dict[str, Any]] = []
+        for res in response.points:
+            meta = res.payload.get("metadata") or {}
+            if res.id is not None:
+                meta = {**meta, "chunk_id": str(res.id)}
+            results.append(
+                {
+                    "content": res.payload.get("content"),
+                    "score": res.score,
+                    "metadata": meta,
+                    "chunk_id": str(res.id) if res.id is not None else None,
+                }
+            )
+        return self._filter_chunks_for_user(results, owner_user_id)
 
     def format_context_for_llm(self, search_result: List[Dict[str, Any]]) -> str:
         parts = []
         for i, res in enumerate(search_result):
-            meta = res.get("metadata") or {}
+            meta = dict(res.get("metadata") or {})
+            content = res.get("content") or ""
+            enrich_location_metadata(meta, content)
+
+            element_type = meta.get("element_type")
+            if element_type in ("routing_hint", "inventory"):
+                parts.append(f"--- Context note ---\n{content}")
+                continue
+
             source = meta.get("file_name", "Unknown")
-            page = meta.get("page_number")
-            section = meta.get("section_title")
+            cite = meta.get("source_index") or (len(parts) + 1)
+            location = format_location_label(meta)
             language = meta.get("language")
 
-            label_parts = [f"Source: {source}"]
-            if page:
-                label_parts.append(f"page {page}")
-            if section:
-                label_parts.append(f'section "{section}"')
+            label_parts = [f"Source [{cite}]: {source}", location]
+            if meta.get("section_title"):
+                label_parts.append(f'section "{meta["section_title"]}"')
             if language:
                 label_parts.append(f"language: {language}")
 
-            label = ", ".join(label_parts)
-            parts.append(f"--- Context {i + 1} ({label}) ---\n{res['content']}")
+            label = " · ".join(label_parts)
+            parts.append(f"--- Context {cite} ({label}) ---\n{content}")
 
         return "\n\n".join(parts)
 
     def _list_indexed_documents_sync(self) -> list[dict[str, Any]]:
+        vector_service.ensure_collection()
+        if not vector_service.collection_exists():
+            return []
+
         docs: dict[str, dict[str, Any]] = {}
         offset = None
         while True:
-            results, next_offset = self.client.scroll(
-                collection_name=self.collection_name,
-                limit=1000,
-                offset=offset,
-                with_payload=["metadata.document_id", "metadata.file_name"],
-                with_vectors=False,
-            )
+            try:
+                results, next_offset = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=1000,
+                    offset=offset,
+                    with_payload=["metadata.document_id", "metadata.file_name"],
+                    with_vectors=False,
+                )
+            except Exception as exc:
+                if is_missing_collection_error(exc):
+                    return []
+                raise
             for point in results:
                 meta = point.payload.get("metadata") or {}
                 doc_id = meta.get("document_id")
@@ -343,17 +392,24 @@ class RetrievalService:
         return await asyncio.to_thread(self._list_indexed_documents_sync)
 
     async def delete_document_by_id(self, document_id: str):
-        return self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="metadata.document_id",
-                        match=models.MatchValue(value=document_id),
-                    )
-                ]
-            ),
-        )
+        if not vector_service.collection_exists():
+            return None
+        try:
+            return self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="metadata.document_id",
+                            match=models.MatchValue(value=document_id),
+                        )
+                    ]
+                ),
+            )
+        except Exception as exc:
+            if is_missing_collection_error(exc):
+                return None
+            raise
 
 
 retrieval_service = RetrievalService()

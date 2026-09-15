@@ -1,5 +1,5 @@
 """
-Slash commands for BuildLens chat (e.g. /briefingdoc, /studyguide, /infographic, /dashboard).
+Slash commands for BuildLens chat (e.g. /report, /briefingdoc, /studyguide).
 
 Parsed before retrieval and intent classification. The user's message text
 is stored as typed; retrieval and LLM user turns may use derived queries.
@@ -33,6 +33,10 @@ _INFOGRAPHIC = re.compile(
 )
 _DASHBOARD = re.compile(
     r"^\s*/dashboard(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
+_REPORT = re.compile(
+    r"^\s*/report(?:@\w+)?\s*(.*)$",
     re.I | re.DOTALL,
 )
 
@@ -69,10 +73,10 @@ _DASHBOARD_RETRIEVAL_FALLBACK = (
     "kpis trends distribution breakdown ranking outcomes milestones table data dashboard"
 )
 _DASHBOARD_LLM_FALLBACK = (
-    "Build a professional visual dashboard from my active sources with KPI cards, "
-    "pie/donut composition, bar comparison, supporting table, timeline if dates exist, "
-    "and executive takeaways. Use only attached files and retrieved document context. "
-    "Do not invent numbers."
+    "Build a production-grade executive dashboard from my active sources as a single "
+    "infographic JSON document with kind dashboard: KPI strip, multiple charts, evidence "
+    "table, timeline, risk/opportunity highlights, and actionable takeaways. Ground "
+    "every figure in retrieved document text. Do not output OCR/indexing diagnostics."
 )
 
 _SLASH_COMMANDS: Tuple[SlashSpec, ...] = (
@@ -103,6 +107,13 @@ _SLASH_COMMANDS: Tuple[SlashSpec, ...] = (
         "dashboard",
         _DASHBOARD_RETRIEVAL_FALLBACK,
         _DASHBOARD_LLM_FALLBACK,
+    ),
+    (
+        _REPORT,
+        IntentMode.DOCUMENT_REPORT,
+        "report",
+        "full document analysis key findings requirements risks gaps conflicts metrics milestones",
+        "Analyze the complete uploaded document set and generate a structured professional report.",
     ),
 )
 
@@ -162,3 +173,7 @@ def is_infographic_command(message: str) -> bool:
 
 def is_dashboard_command(message: str) -> bool:
     return _DASHBOARD.match((message or "").strip()) is not None
+
+
+def is_report_command(message: str) -> bool:
+    return _REPORT.match((message or "").strip()) is not None

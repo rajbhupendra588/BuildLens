@@ -23,6 +23,7 @@ class IntentMode(str, Enum):
     STUDY_GUIDE = "STUDY_GUIDE"
     INFOGRAPHIC = "INFOGRAPHIC"
     DASHBOARD = "DASHBOARD"
+    DOCUMENT_REPORT = "DOCUMENT_REPORT"
     DATA_ANALYST = "DATA_ANALYST"
     CREATIVE = "CREATIVE"
 
@@ -35,6 +36,7 @@ _PRIORITY: List[IntentMode] = [
     IntentMode.SUMMARIZER,
     IntentMode.BRIEFING_DOC,
     IntentMode.STUDY_GUIDE,
+    IntentMode.DOCUMENT_REPORT,
     IntentMode.DASHBOARD,
     IntentMode.INFOGRAPHIC,
     IntentMode.CREATIVE,
@@ -52,6 +54,7 @@ _LABELS: Dict[IntentMode, str] = {
     IntentMode.STUDY_GUIDE: "Study Guide",
     IntentMode.INFOGRAPHIC: "Infographic",
     IntentMode.DASHBOARD: "Visual Dashboard",
+    IntentMode.DOCUMENT_REPORT: "Document Report",
     IntentMode.DATA_ANALYST: "Data Analyst",
     IntentMode.CREATIVE: "Creative Synthesizer",
 }
@@ -66,6 +69,7 @@ _ICONS: Dict[IntentMode, str] = {
     IntentMode.STUDY_GUIDE: "📚",
     IntentMode.INFOGRAPHIC: "🎨",
     IntentMode.DASHBOARD: "📊",
+    IntentMode.DOCUMENT_REPORT: "📄",
     IntentMode.DATA_ANALYST: "📈",
     IntentMode.CREATIVE: "💡",
 }

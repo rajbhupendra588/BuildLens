@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Literal
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DOTENV_PATH = Path(__file__).resolve().parent.parent.parent.parent / ".env"
@@ -29,17 +30,49 @@ class IngestSettings(BaseSettings):
     FAST_PDF_MIN_TEXT_CHARS: int = 80
     FAST_INDEX_MAX_CHARS: int = 800_000
     FAST_DOCX_MAX_BYTES: int = 15 * 1024 * 1024
+    # Embedding upsert batch size (raise on machines with more RAM; default tuned for Docker).
+    EMBED_BATCH_SIZE: int = 32
+    # Worker loop poll interval when queue is empty (seconds).
+    WORKER_POLL_SECONDS: float = 2.0
+    # Master spawns ingest worker threads in-process (uploads_data indexing).
+    ENABLE_WORKER_POOL: bool = True
+    # Hard ceiling for parallel workers (absolute max 5 in code).
+    WORKER_MAX_PARALLEL: int = 5
+    # Set to 0 to disable pool; set 1–5 to override auto plan.
+    WORKER_COUNT: int | None = None
+    # Container/host RAM hint for plan (0 = ignore). Docker: set ~ mem_limit in GiB.
+    WORKER_MEMORY_BUDGET_GB: float = 0.0
 
 
 class StorageSettings(BaseSettings):
     """On-disk storage for original uploaded files (images, PDFs, etc.)."""
     UPLOAD_DIR: str = "uploads_data"
+    REPORTS_DIR: str = "reports_data"
     # Max upload size (bytes). Default 20 MiB per file.
     MAX_UPLOAD_BYTES: int = 20 * 1024 * 1024
     MAX_LIBRARY_FILES: int = 5
     MAX_SESSION_ATTACHMENTS: int = 5
-    # Stream read/write chunk size while saving uploads (8 MiB).
-    UPLOAD_STREAM_CHUNK_BYTES: int = 8 * 1024 * 1024
+    # Stream read/write chunk size while saving uploads (16 MiB — fewer syscalls on large files).
+    UPLOAD_STREAM_CHUNK_BYTES: int = 16 * 1024 * 1024
+
+
+class AuthSettings(BaseModel):
+    """Username/password sessions, cookies, and brute-force limits."""
+
+    COOKIE_NAME: str = "buildlens_session"
+    COOKIE_SECURE: bool = False
+    SESSION_TTL_SECONDS: int = 60 * 60 * 24 * 7
+    RESET_TOKEN_TTL_MINUTES: int = 60
+    LOGIN_MAX_FAILURES: int = 8
+    LOGIN_LOCKOUT_MINUTES: int = 15
+    LOGIN_RATE_LIMIT_PER_MINUTE: int = 10
+    FORGOT_RATE_LIMIT_PER_MINUTE: int = 5
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    PUBLIC_APP_URL: str = "http://localhost:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 
 class DatabaseSettings(BaseSettings):
@@ -76,6 +109,7 @@ class Settings(BaseSettings):
     DB: DatabaseSettings = DatabaseSettings()
     STORAGE: StorageSettings = StorageSettings()
     INGEST: IngestSettings = IngestSettings()
+    AUTH: AuthSettings = AuthSettings()
 
     model_config = SettingsConfigDict(
         env_file=DOTENV_PATH if DOTENV_PATH.exists() else None,

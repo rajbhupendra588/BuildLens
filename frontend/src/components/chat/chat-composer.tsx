@@ -26,9 +26,10 @@ import {
 import { useActiveChatSessionId } from "@/lib/active-chat-session";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { toast } from "sonner";
-import { ComposerAttachments } from "./composer-attachments";
 import { SlashCommandMenu } from "./slash-command-menu";
 import { useChatDocumentPreview } from "./chat-document-preview-context";
+import { useDocumentScopeStore } from "@/hooks/use-document-scope-store";
+import { fileMatchesScope } from "@/types/document-scope";
 import {
   applySlashCommandSelection,
   filterSlashCommands,
@@ -48,6 +49,7 @@ import {
 interface LibraryDocRow {
   document_id: string;
   file_name: string;
+  collection?: string;
 }
 
 interface ChatComposerProps {
@@ -58,7 +60,8 @@ interface ChatComposerProps {
   onStop: () => void;
   disabled?: boolean;
   ensureSession?: () => Promise<string | null>;
-  onAttachmentCountChange?: (count: number) => void;
+  /** Nested inside the unified chat dock (lighter chrome). */
+  embedded?: boolean;
 }
 
 export function ChatComposer({
@@ -69,9 +72,10 @@ export function ChatComposer({
   onStop,
   disabled,
   ensureSession,
-  onAttachmentCountChange,
+  embedded,
 }: ChatComposerProps) {
   const activeSessionId = useActiveChatSessionId();
+  const scopeId = useDocumentScopeStore((s) => s.scopeId);
   const { openPreview } = useChatDocumentPreview();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -91,6 +95,15 @@ export function ChatComposer({
 
   const slashMenuOpen =
     !isTyping && !activeUpload && !disabled && isSlashCommandMenuOpen(value);
+  const scopedLibraryDocs = useMemo(() => {
+    if (scopeId === "all") return libraryDocs;
+    return libraryDocs.filter(
+      (doc) =>
+        fileMatchesScope(doc.file_name, scopeId) ||
+        doc.collection === scopeId,
+    );
+  }, [libraryDocs, scopeId]);
+
   const slashFilter = getSlashCommandFilter(value);
   const slashCommands = useMemo(
     () => filterSlashCommands(slashFilter),
@@ -235,9 +248,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto">
-      <ComposerAttachments onAttachmentsChange={onAttachmentCountChange} />
-
+    <div className="w-full min-w-0">
       {activeUpload ? (
         <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin shrink-0" />
@@ -255,8 +266,13 @@ export function ChatComposer({
 
       <div
         className={cn(
-          "flex items-end gap-1 rounded-[1.75rem] border bg-background px-2 py-2 shadow-sm",
-          "ring-1 ring-border/60 focus-within:ring-2 focus-within:ring-primary/25",
+          "flex items-end gap-1 rounded-2xl px-2 py-2",
+          embedded
+            ? "border border-[var(--enterprise-border)]/70 bg-[var(--enterprise-elevated)]/90 focus-within:border-[var(--enterprise-accent)]/40"
+            : cn(
+                "rounded-[1.75rem] border bg-background shadow-sm ring-1 ring-border/60",
+                "focus-within:ring-2 focus-within:ring-primary/25",
+              ),
           voice.isListening && "ring-2 ring-primary/40 border-primary/30",
         )}
       >
@@ -299,10 +315,14 @@ export function ChatComposer({
             <DropdownMenuSeparator />
             {libraryLoading ? (
               <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
-            ) : libraryDocs.length === 0 ? (
-              <DropdownMenuItem disabled>No indexed files yet</DropdownMenuItem>
+            ) : scopedLibraryDocs.length === 0 ? (
+              <DropdownMenuItem disabled>
+                {scopeId === "all"
+                  ? "No indexed files yet"
+                  : "No files in this document scope"}
+              </DropdownMenuItem>
             ) : (
-              libraryDocs.map((doc) => (
+              scopedLibraryDocs.map((doc) => (
                 <DropdownMenuItem
                   key={doc.document_id}
                   className="truncate"
@@ -325,12 +345,13 @@ export function ChatComposer({
             />
           ) : null}
           <textarea
+            id="chat-composer-input"
             ref={textareaRef}
-            rows={1}
+            rows={3}
             placeholder={
               voice.isListening
                 ? "Listening…"
-                : "Ask about your documents… (type / for commands)"
+                : "Ask about your project or documents…"
             }
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -350,7 +371,12 @@ export function ChatComposer({
                   );
                   return;
                 }
-                if (e.key === "Enter" || e.key === "Tab") {
+                if (e.key === "Tab") {
+                  e.preventDefault();
+                  selectSlashCommand(slashCommands[slashActiveIndex]);
+                  return;
+                }
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   selectSlashCommand(slashCommands[slashActiveIndex]);
                   return;
@@ -368,8 +394,8 @@ export function ChatComposer({
             }}
             disabled={isTyping || !!activeUpload || disabled}
             className={cn(
-              "w-full resize-none bg-transparent px-1 py-2.5 text-sm leading-relaxed",
-              "placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-40",
+              "w-full resize-none bg-transparent px-1 py-2.5 text-[15px] leading-relaxed",
+              "placeholder:text-muted-foreground focus:outline-none min-h-[72px] max-h-[130px]",
             )}
             onInput={(e) => {
               const el = e.currentTarget;

@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { X } from "lucide-react";
 import { DocumentPreviewPane } from "@/components/documents/document-preview-pane";
-import { Button } from "@/components/ui/button";
+import { SourcePanel } from "@/components/enterprise-chat/source-panel";
 import {
   Sheet,
   SheetContent,
@@ -11,14 +10,19 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useChatDocumentPreview } from "./chat-document-preview-context";
-import { cn } from "@/lib/utils";
 
 interface ChatDocumentWorkspaceProps {
   children: ReactNode;
 }
 
 export function ChatDocumentWorkspace({ children }: ChatDocumentWorkspaceProps) {
-  const { preview, closePreview } = useChatDocumentPreview();
+  const {
+    preview,
+    panelSources,
+    activeCitationIndex,
+    openFromSource,
+    closePreview,
+  } = useChatDocumentPreview();
   const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
@@ -29,45 +33,22 @@ export function ChatDocumentWorkspace({ children }: ChatDocumentWorkspaceProps) 
     return () => mq.removeEventListener("change", update);
   }, []);
 
-  const showSidePanel = Boolean(preview && isDesktop);
   const showSheet = Boolean(preview && !isDesktop);
 
   return (
-    <div className="flex flex-1 min-h-0 overflow-hidden">
-      <div
-        className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col",
-          showSidePanel && "lg:max-w-[60%]",
-        )}
-      >
+    <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col min-h-0 overflow-hidden">
         {children}
       </div>
 
-      {showSidePanel && preview ? (
-        <aside className="hidden lg:flex min-h-0 w-[40%] min-w-[280px] flex-col border-l bg-card">
-          <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-            <p className="min-w-0 flex-1 truncate text-sm font-medium">
-              {preview.fileName}
-            </p>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="size-8 shrink-0"
-              onClick={closePreview}
-              title="Close preview"
-            >
-              <X className="size-4" />
-            </Button>
-          </div>
-          <DocumentPreviewPane
-            documentId={preview.documentId}
-            fileName={preview.fileName}
-            pageNumber={preview.pageNumber}
-            contentClassName="h-[calc(100svh-8rem)]"
-            className="flex-1"
-          />
-        </aside>
+      {isDesktop ? (
+        <SourcePanel
+          preview={preview}
+          sources={panelSources}
+          activeCitationIndex={activeCitationIndex}
+          onSelectSource={openFromSource}
+          onClose={closePreview}
+        />
       ) : null}
 
       <Sheet
@@ -76,10 +57,10 @@ export function ChatDocumentWorkspace({ children }: ChatDocumentWorkspaceProps) 
           if (!open) closePreview();
         }}
       >
-        <SheetContent side="right" className="flex w-full flex-col p-0 sm:max-w-lg">
+        <SheetContent side="bottom" className="flex max-h-[85vh] flex-col p-0">
           <SheetHeader className="border-b px-4 py-3 text-left">
             <SheetTitle className="truncate pr-6">
-              {preview?.fileName ?? "Preview"}
+              {preview?.fileName ?? "Sources"}
             </SheetTitle>
           </SheetHeader>
           {preview ? (
@@ -87,7 +68,9 @@ export function ChatDocumentWorkspace({ children }: ChatDocumentWorkspaceProps) 
               documentId={preview.documentId}
               fileName={preview.fileName}
               pageNumber={preview.pageNumber}
-              contentClassName="h-[calc(100svh-6rem)]"
+              highlightSnippet={preview.snippet}
+              bbox={preview.bbox}
+              contentClassName="h-[50vh]"
               className="flex-1"
             />
           ) : null}

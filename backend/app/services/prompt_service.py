@@ -38,6 +38,12 @@ _NO_CONTEXT_NOTICE = (
 
 _MARKDOWN_VISUAL_POLICY = """
 
+Evidence citation rules (when Context from Documents is non-empty):
+- Context blocks are numbered [1], [2], … in their headers—use the same numbers as inline citations after grounded claims, e.g. …foundation depth is 1.2 m [1].
+- Repeat location in prose when helpful: page, paragraph, and line range from the context header (e.g. "On page 4, paragraph 2, lines 18–24 …[2]").
+- Use inline [n] citations only in the answer body. Never write "Sources:", a **Sources** heading, or any trailing bibliography—the app renders citations in a separate Sources & evidence control.
+- Do not cite context notes or inventory blocks.
+
 BuildLens chat rendering rules (always follow):
 - Output readable Markdown only. Never use ASCII art, box-drawing characters, pipe grids, \
 or monospace "infographics" made from |, _, =, or similar characters.
@@ -93,6 +99,8 @@ Block types:
 Pillar icon names (optional): brain, cpu, network, shield, target, layers, zap, book, cog, database, sparkles.
 
 Do not output ASCII diagrams, pipe art, or duplicate the JSON as prose.
+Never output internal pipeline diagnostics (e.g. "OCR: pending", "retrieval attempts", \
+"source:", "type: scanned PDF") — those are not user-facing content.
 """
 
 _GENERAL_PROMPT = """\
@@ -283,7 +291,9 @@ from the sources; otherwise a short concept → insight pair.
 whenever the sources contain comparable quantities, skill clusters, time spans, \
 or countable items. Add a line chart if a sequence of dates/values exists.
 4. **table** — supporting figures, roles, skills, or findings the charts cannot show.
-5. **flow** or **timeline** — process, career path, or chronological milestones.
+5. **flow** or **timeline** — process, career path, or chronological milestones. \
+For **7+ steps**, use **timeline** (vertical) or **flow** with at most 6 **steps** and \
+short labels (under ~6 words each); never squeeze a long sequence into one horizontal row.
 6. **pillars** or **compare** — capabilities vs gaps, strengths vs risks, before/after.
 7. **highlight** (insight or problem) plus **takeaways** (4–6 specific next-read or \
 decision points).
@@ -297,33 +307,34 @@ Cite source filenames in meta or chart source fields.
 """
 
 _DASHBOARD_PROMPT = """\
-You are a principal data journalist and dashboard designer. Produce a professional \
-visual dashboard (Gemini/ChatGPT immersive style) with charts, not a bullet list. \
-Every KPI, slice, and table cell must be grounded in the retrieved documents. \
-Never invent statistics.
+You are a principal data journalist and executive dashboard designer for a construction \
+document intelligence platform. Deliver a production-grade visual dashboard — not a \
+status log, not key:value diagnostics, not a plain bullet memo.
 
-Set "kind":"dashboard" and "accent":"emerald" unless another accent better matches \
-the subject. Use 8–14 blocks in this order:
+Mandatory output: exactly one ```infographic JSON document with "kind":"dashboard". \
+Do not describe OCR, indexing, retrieval attempts, or system state unless the user \
+explicitly asked for pipeline status.
 
-1. **story** titled "Executive briefing" — 3–4 paragraphs covering context, what the \
-numbers/facts show, material risks or strengths, and the decision this dashboard \
-supports.
-2. **metrics** — 4–6 KPI cards with numeric values when available (years of experience, \
-counts, scores, dates, % if present). Each hint explains why the KPI matters.
-3. **chart** pie or donut — composition (skills mix, time allocation, category share, \
-portfolio split). Derive slices only from documented groups; values may be counts \
-or relative weights stated or clearly implied.
-4. **chart** bar or hbar — ranking/comparison (roles, systems, vendors, periods).
-5. **chart** line — only if the sources have a time sequence; otherwise omit.
-6. **table** — the underlying grid (columns like Item, Detail, Evidence/source).
-7. **timeline** — career, project, or program milestones with dates from the sources.
-8. **highlight** blocks for the main risk and the main opportunity (problem + solution).
-9. **takeaways** — 5–7 analyst recommendations a busy executive can act on.
+Ground every KPI, chart slice, table row, and timeline date in the retrieved document \
+context. Never invent statistics. If a figure is a derived count (e.g. number of sections), \
+say so in the story block.
 
-If the document is qualitative (e.g. a resume with few numbers), still build charts \
-from countable, source-grounded structure (years per employer, skill groups, \
-number of domains) and say in the story that figures are derived counts, not \
-official KPIs.
+Set "accent":"emerald" unless another accent fits the subject. Build 10–16 blocks:
+
+1. **story** — title "Executive briefing", 3–4 paragraphs: situation, evidence summary, \
+risks, decision/use for the project team.
+2. **metrics** — 4–6 KPI cards (label, value, hint). Prefer real numbers from sources.
+3. **chart** (pie or donut) — composition or category mix with 3–7 slices, grounded.
+4. **chart** (bar or hbar) — comparison or ranking across categories.
+5. **chart** (line) — only if dates/sequence exist in sources.
+6. **table** — evidence grid: columns like Item | Detail | Source page/section.
+7. **timeline** — milestones with dates when present.
+8. **highlight** (problem) — top material risk from sources.
+9. **highlight** (solution) — mitigation or opportunity.
+10. **pillars** or **compare** — strengths vs gaps when useful.
+11. **takeaways** — 5–7 executive actions, each specific and source-backed.
+
+Populate "meta" with source filename(s), document type, and scope tags (max 4).
 
 {history_section}
 
@@ -446,8 +457,8 @@ class PromptComposer:
             multi_file = len(file_names) > 1
             prefix = (
                 "Context includes file(s) attached to this chat (quick preview). "
-                "Prefer this text for questions about recently uploaded files. "
-                "Full library search may still be indexing.\n\n"
+                "Prefer indexed document excerpts below for scanned PDFs and OCR content. "
+                "Ignore upload stub messages about OCR still running when indexed excerpts exist.\n\n"
                 if has_session
                 else ""
             )
@@ -487,6 +498,13 @@ class PromptComposer:
             context_section=context_section,
         )
         prompt += _MARKDOWN_VISUAL_POLICY
+        if context_chunks and intent.mode not in (
+            IntentMode.INFOGRAPHIC,
+            IntentMode.DASHBOARD,
+        ):
+            prompt += (
+                "\n\nApply the evidence citation rules above (inline [n] only; no Sources footer).\n"
+            )
         if intent.mode in (IntentMode.INFOGRAPHIC, IntentMode.DASHBOARD) or (
             user_query and _INFOGRAPHIC_QUERY.search(user_query)
         ):

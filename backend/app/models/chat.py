@@ -8,12 +8,22 @@ import uuid
 class ChatSession(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     title: str = Field(default="New Conversation")
+    user_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            pg.UUID(as_uuid=True),
+            ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=True,
+            index=True,
+        ),
+    )
 
     provider: str = Field(default="ollama")
     model_name: str = Field(default="minimax-m2:cloud")
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    is_pinned: bool = Field(default=False, index=True)
 
     messages: List["ChatMessage"] = Relationship(
         back_populates="session",

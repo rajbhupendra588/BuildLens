@@ -1,6 +1,7 @@
 export interface LibraryDocument {
   document_id: string;
   file_name: string;
+  collection?: string;
   file_size?: number | null;
   has_file?: boolean;
   media_type?: string | null;

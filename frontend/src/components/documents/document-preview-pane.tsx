@@ -1,15 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Download } from "lucide-react";
 import { FileIcon } from "@/components/library/file-icon";
 import { Button } from "@/components/ui/button";
-import { documentFileUrl } from "@/lib/api";
+import { fetchDocumentBlob } from "@/lib/api";
+import { AuthenticatedDocumentImage } from "@/components/documents/authenticated-document-image";
 import {
   isImageFileName,
   isPdfFileName,
 } from "@/lib/collect-dropped-files";
 import { cn } from "@/lib/utils";
+import dynamic from "next/dynamic";
+
+const PdfEvidenceViewer = dynamic(
+  () =>
+    import("./pdf-evidence-viewer").then((mod) => mod.PdfEvidenceViewer),
+  { ssr: false, loading: () => <p className="p-4 text-xs text-muted-foreground">Loading PDF…</p> },
+);
+import type { SourceBBox } from "@/types/chat";
 
 const TEXT_PREVIEW_EXTS = new Set([
   "txt",
@@ -34,28 +43,42 @@ export interface DocumentPreviewPaneProps {
   documentId: string;
   fileName: string;
   pageNumber?: number | null;
+  highlightSnippet?: string | null;
+  bbox?: SourceBBox | null;
   className?: string;
   /** iframe / image max height class */
   contentClassName?: string;
+  /** When true, PDF prev/next is handled by a parent (e.g. source panel toolbar). */
+  hidePdfPageControls?: boolean;
 }
 
-function pdfSrc(base: string, pageNumber?: number | null): string {
-  if (!pageNumber || pageNumber < 1) return base;
-  return `${base}#page=${pageNumber}`;
+function highlightExcerpt(full: string, snippet: string): ReactNode {
+  const needle = snippet.trim().slice(0, 80);
+  if (!needle || needle.length < 8) return full;
+  const idx = full.toLowerCase().indexOf(needle.toLowerCase());
+  if (idx === -1) return full;
+  const end = idx + needle.length;
+  return (
+    <>
+      {full.slice(0, idx)}
+      <mark className="rounded-sm bg-[var(--enterprise-accent)]/25 px-0.5 text-foreground">
+        {full.slice(idx, end)}
+      </mark>
+      {full.slice(end)}
+    </>
+  );
 }
 
 export function DocumentPreviewPane({
   documentId,
   fileName,
   pageNumber,
+  highlightSnippet,
+  bbox,
   className,
   contentClassName,
+  hidePdfPageControls = false,
 }: DocumentPreviewPaneProps) {
-  const baseSrc = documentFileUrl(documentId);
-  const src = useMemo(
-    () => pdfSrc(baseSrc, pageNumber),
-    [baseSrc, pageNumber],
-  );
   const image = isImageFileName(fileName);
   const pdf = isPdfFileName(fileName);
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
@@ -75,11 +98,8 @@ export function DocumentPreviewPane({
     let cancelled = false;
     setTextLoading(true);
     setTextError(null);
-    fetch(baseSrc)
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Could not load file");
-        return res.text();
-      })
+    fetchDocumentBlob(documentId)
+      .then((blob) => blob.text())
       .then((body) => {
         if (!cancelled) setTextContent(body);
       })
@@ -97,7 +117,7 @@ export function DocumentPreviewPane({
     return () => {
       cancelled = true;
     };
-  }, [baseSrc, textPreview]);
+  }, [documentId, textPreview]);
 
   const heightClass = contentClassName ?? "h-[70vh]";
 
@@ -105,9 +125,8 @@ export function DocumentPreviewPane({
     <div className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", className)}>
       {image ? (
         <div className="flex justify-center p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={baseSrc}
+          <AuthenticatedDocumentImage
+            documentId={documentId}
             alt={fileName}
             className={cn(
               "max-w-full rounded-md object-contain",
@@ -117,12 +136,15 @@ export function DocumentPreviewPane({
           />
         </div>
       ) : pdf ? (
-        <iframe
-          key={src}
-          title={fileName}
-          src={src}
-          className={cn("w-full border-0 bg-background", heightClass)}
-        />
+        <div className="p-2">
+          <PdfEvidenceViewer
+            documentId={documentId}
+            pageNumber={pageNumber}
+            bbox={bbox}
+            heightClass={heightClass}
+            hidePageControls={hidePdfPageControls}
+          />
+        </div>
       ) : textPreview ? (
         <div className="p-4">
           {textLoading ? (
@@ -131,7 +153,9 @@ export function DocumentPreviewPane({
             <p className="text-sm text-destructive">{textError}</p>
           ) : (
             <pre className="max-h-[70vh] overflow-auto rounded-md border bg-background p-4 text-xs leading-relaxed whitespace-pre-wrap break-words">
-              {textContent}
+              {highlightSnippet && textContent
+                ? highlightExcerpt(textContent, highlightSnippet)
+                : textContent}
             </pre>
           )}
         </div>
@@ -142,11 +166,21 @@ export function DocumentPreviewPane({
             Preview is not available for this file type. Download to open it
             locally.
           </p>
-          <Button asChild>
-            <a href={baseSrc} download={fileName}>
-              <Download className="size-4" />
-              Download
-            </a>
+          <Button
+            type="button"
+            onClick={() => {
+              void fetchDocumentBlob(documentId).then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = fileName;
+                anchor.click();
+                URL.revokeObjectURL(url);
+              });
+            }}
+          >
+            <Download className="size-4" />
+            Download
           </Button>
         </div>
       )}

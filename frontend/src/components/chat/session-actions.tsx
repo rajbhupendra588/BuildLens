@@ -27,7 +27,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { Pencil, Trash2 } from "lucide-react";
+import { ChatSession } from "@/types/chat";
+import { Pencil, Pin, Trash2 } from "lucide-react";
 
 export function SessionActions({
   sessionId,
@@ -36,8 +37,16 @@ export function SessionActions({
   sessionId: string;
   initialTitle: string;
 }) {
-  const { removeSession, updateSessionTitle, currentSessionId } = useChatStore();
+  const {
+    removeSession,
+    updateSessionTitle,
+    updateSessionPin,
+    setSessions,
+    currentSessionId,
+    sessions,
+  } = useChatStore();
   const router = useRouter();
+  const isPinned = sessions.find((s) => s.id === sessionId)?.is_pinned ?? false;
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [newTitle, setNewTitle] = useState(initialTitle);
@@ -48,10 +57,25 @@ export function SessionActions({
       await apiRequest(`/chat/sessions/${sessionId}`, { method: "DELETE" });
       removeSession(sessionId);
       if (currentSessionId === sessionId) {
-        router.push("/");
+        router.push("/app");
       }
     } catch (error) {
       logApiError("Failed to delete session", error);
+    }
+  };
+
+  const handleTogglePin = async () => {
+    const next = !isPinned;
+    try {
+      await apiRequest(
+        `/chat/sessions/${sessionId}?is_pinned=${next ? "true" : "false"}`,
+        { method: "PATCH" },
+      );
+      updateSessionPin(sessionId, next);
+      const refreshed = await apiRequest<ChatSession[]>("/chat/sessions");
+      setSessions(refreshed);
+    } catch (error) {
+      logApiError("Failed to pin session", error);
     }
   };
 
@@ -77,6 +101,10 @@ export function SessionActions({
   return (
     <>
       <DropdownMenuContent side="right" align="start">
+        <DropdownMenuItem onClick={() => void handleTogglePin()}>
+          <Pin className="mr-2 size-4" />
+          {isPinned ? "Unpin conversation" : "Pin conversation"}
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setIsRenameOpen(true)}>
           <Pencil className="mr-2 size-4" /> Rename
         </DropdownMenuItem>

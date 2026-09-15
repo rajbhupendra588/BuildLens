@@ -10,12 +10,16 @@ import {
 } from "@/types/chat";
 import { useRef, useState } from "react";
 import { useChatStore } from "./use-chat-store";
+import { useDocumentScopeStore } from "./use-document-scope-store";
 import { apiStream, apiRequest, logApiError } from "@/lib/api";
+import { useReportStore } from "./use-report-store";
+import type { ReportPayload } from "@/types/report";
 
 export function useChatStream() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
+  const [reportScope, setReportScope] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
@@ -58,6 +62,7 @@ export function useChatStream() {
 
     setIsTyping(true);
     setStreamStatus(null);
+    setReportScope(null);
 
     // Create a fresh AbortController for this request
     const controller = new AbortController();
@@ -102,12 +107,16 @@ export function useChatStream() {
     };
 
     try {
+      const scopeId = useDocumentScopeStore.getState().scopeId;
+      const activeReportId = useReportStore.getState().activeReportId;
       const params = new URLSearchParams({
         question,
         session_id: sessionId,
         provider: selectedProvider,
         model: selectedModel,
+        document_scope: scopeId,
       });
+      if (activeReportId) params.set("report_id", activeReportId);
 
       const reader = await apiStream(`/chat/ask-stream?${params.toString()}`, {
         signal: controller.signal,
@@ -179,6 +188,16 @@ export function useChatStream() {
               setStreamStatus(data.text);
             }
 
+            if (data.type === "report_scope" && typeof data.label === "string") {
+              setReportScope(data.label);
+              setStreamStatus(`Report Scope: ${data.label}`);
+            }
+
+            if (data.type === "report" && data.report) {
+              const report = data.report as ReportPayload;
+              useReportStore.getState().openViewer(report);
+            }
+
             if (data.type === "sources") {
               sources = data.sources ?? [];
               upsertAssistant(accumulatedContent);
@@ -221,6 +240,11 @@ export function useChatStream() {
       setStreamStatus(null);
 
       if (sessionId) {
+        try {
+          await refreshHistory(sessionId);
+        } catch (error) {
+          logApiError("Failed to sync history after stream", error);
+        }
         setTimeout(async () => {
           try {
             const sessions = await apiRequest<ChatSession[]>("/chat/sessions");
@@ -242,6 +266,7 @@ export function useChatStream() {
     refreshHistory,
     isTyping,
     streamStatus,
+    reportScope,
     stopGeneration,
   };
 }

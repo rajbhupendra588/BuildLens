@@ -88,6 +88,24 @@ class QuickExtractResult:
     method: str
 
 
+_PLACEHOLDER_PREFIXES = (
+    "[pdf uploaded — text preview empty",
+    "[docx uploaded — quick preview empty",
+    "[file ",
+    "quick preview unavailable",
+    "quick preview truncated",
+    "scanned pages may use slower ocr",
+)
+
+
+def is_placeholder_preview(text: str | None) -> bool:
+    """True when session quick text is a stub, not usable document content."""
+    if not text or not text.strip():
+        return True
+    lowered = text.strip().lower()
+    return any(marker in lowered for marker in _PLACEHOLDER_PREFIXES)
+
+
 def _cap(text: str) -> tuple[str, bool]:
     limit = settings.INGEST.QUICK_EXTRACT_MAX_CHARS
     if len(text) <= limit:

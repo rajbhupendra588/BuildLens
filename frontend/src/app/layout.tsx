@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
 import { Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
-import { GlobalUploadIndicator } from "@/components/global-upload-indicator";
+import { AuthProvider } from "@/hooks/use-auth";
 
 const inter = Inter({
   variable: "--font-geist-sans",
@@ -19,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BuildLens · Document Workspace",
+  title: "BuildLens",
   description:
     "Enterprise document intelligence—chat with your PDFs using grounded, cited answers.",
 };
@@ -31,23 +28,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${inter.variable} ${geistMono.variable} antialiased`}
-      >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <SidebarProvider
-            style={
-              {
-                "--sidebar-width": "18rem",
-              } as CSSProperties
-            }
-          >
-            <AppSidebar />
+      <body className={`${inter.variable} ${geistMono.variable} antialiased`}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+          <AuthProvider>
             {children}
-          </SidebarProvider>
-
-          <GlobalUploadIndicator />
-          <Toaster />
+            <Toaster />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

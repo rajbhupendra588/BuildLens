@@ -8,7 +8,10 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.database import engine
 from app.models.session_attachment import SessionAttachment
-from app.services.quick_extract_service import extract_from_document
+from app.services.quick_extract_service import (
+    extract_from_document,
+    is_placeholder_preview,
+)
 
 
 def _db() -> Session:
@@ -46,6 +49,22 @@ def set_index_status(document_id: str, status: str) -> None:
         ).all()
         for row in rows:
             row.index_status = status
+            db.add(row)
+        db.commit()
+
+
+def on_library_index_complete(document_id: str) -> None:
+    """After full vector indexing, drop OCR stub previews so RAG uses real chunks."""
+    with _db() as db:
+        rows = db.exec(
+            select(SessionAttachment).where(
+                SessionAttachment.document_id == document_id
+            )
+        ).all()
+        for row in rows:
+            row.index_status = "indexed"
+            if is_placeholder_preview(row.quick_text):
+                row.quick_text = None
             db.add(row)
         db.commit()
 
@@ -131,15 +150,19 @@ def detach_from_session(session_id: uuid.UUID, attachment_id: uuid.UUID) -> bool
 def build_session_context_chunks(
     session_id: uuid.UUID,
     document_ids: list[str] | None = None,
+    indexed_document_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Turn session quick extracts into RAG-style chunks (always high relevance)."""
     attachments = list_for_session(session_id)
     allowed = set(document_ids) if document_ids else None
+    indexed = indexed_document_ids or set()
     chunks: list[dict[str, Any]] = []
     for att in attachments:
         if allowed is not None and att.document_id not in allowed:
             continue
-        if not att.quick_text or not att.quick_text.strip():
+        if att.document_id in indexed:
+            continue
+        if not att.quick_text or is_placeholder_preview(att.quick_text):
             continue
         chunks.append(
             {
@@ -163,10 +186,14 @@ def merge_with_vector_results(
     limit: int,
 ) -> list[dict[str, Any]]:
     """Session preview first, then vector hits without duplicating same document_id."""
-    merged: list[dict[str, Any]] = list(session_chunks)
+    merged: list[dict[str, Any]] = []
     seen_docs: set[str] = set()
     for c in session_chunks:
+        content = (c.get("content") or "").strip()
+        if is_placeholder_preview(content):
+            continue
         doc_id = (c.get("metadata") or {}).get("document_id")
+        merged.append(c)
         if doc_id:
             seen_docs.add(doc_id)
 

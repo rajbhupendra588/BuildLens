@@ -8,14 +8,28 @@ import { ScrollArea } from "../ui/scroll-area";
 import { ChatDayDivider, ChatMessageItem } from "./chat-message-item";
 import { isSameCalendarDay } from "@/lib/chat-time";
 import { toast } from "sonner";
-import { ChatWorkspaceHeader } from "./chat-workspace-header";
 import { ChatComposer } from "./chat-composer";
 import { ChatDocumentPreviewProvider, useChatDocumentPreview } from "./chat-document-preview-context";
 import { ChatDocumentWorkspace } from "./chat-document-workspace";
-import { Loader2, ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown } from "lucide-react";
+import { ChatLayout } from "@/components/enterprise-chat/chat-layout";
+import { ChatHeader } from "@/components/enterprise-chat/chat-header";
+import { EmptyState } from "@/components/enterprise-chat/empty-state";
+import { RetrievalStatus } from "@/components/enterprise-chat/retrieval-status";
+import { ReportViewer } from "@/components/enterprise-chat/report-viewer";
+import { isReportMedia } from "@/types/report";
+import { AddedContextStrip } from "@/components/enterprise-chat/added-context-strip";
+import { UploadStatus } from "@/components/enterprise-chat/upload-status";
+import { useDocumentScopeStore } from "@/hooks/use-document-scope-store";
+import { scopeLabel } from "@/types/document-scope";
 import { apiRequest, logApiError } from "@/lib/api";
 import { hydrateChatMessage, HistoryMessage, SourceItem } from "@/types/chat";
 import { Skeleton } from "../ui/skeleton";
+import {
+  chatPanelContentClassName,
+  chatPanelOuterClassName,
+  chatPanelWidthClassName,
+} from "@/lib/chat-panel-layout";
 import { cn } from "@/lib/utils";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getActiveChatSessionId } from "@/lib/active-chat-session";
@@ -29,17 +43,6 @@ import {
 import {
   validateDocumentFile,
 } from "@/lib/document-upload";
-import {
-  CHAT_SLASH_COMMANDS,
-  slashForCommand,
-} from "@/lib/chat-slash-commands";
-
-const STARTER_PROMPTS = [
-  ...CHAT_SLASH_COMMANDS.map((c) => slashForCommand(c.name)),
-  "Summarize the key points in my document",
-  "What are the main risks or obligations mentioned?",
-  "List action items with owners and deadlines",
-];
 
 function ChatInterfaceInner() {
   const router = useRouter();
@@ -47,7 +50,9 @@ function ChatInterfaceInner() {
   const pathname = usePathname();
   const { currentSessionId, selectedModel, addSession, setCurrentSessionId } =
     useChatStore();
-  const { openPreview } = useChatDocumentPreview();
+  const { openFromSource, setPanelSources } =
+    useChatDocumentPreview();
+  const { scopeId, scopeSuffix } = useDocumentScopeStore();
   const {
     messages,
     setMessages,
@@ -55,6 +60,7 @@ function ChatInterfaceInner() {
     rollbackFrom,
     isTyping,
     streamStatus,
+    reportScope,
     stopGeneration,
   } = useChatStream();
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -67,13 +73,16 @@ function ChatInterfaceInner() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
   const pendingQuestionSentRef = useRef<string | null>(null);
+  const handleSendRef = useRef<() => void>(() => {});
+  const isTypingRef = useRef(isTyping);
+  isTypingRef.current = isTyping;
 
   const prevPathnameRef = useRef(pathname);
 
   useEffect(() => {
     const prev = prevPathnameRef.current;
     prevPathnameRef.current = pathname;
-    if (pathname === "/" && prev !== "/") {
+    if ((pathname === "/" || pathname === "/app") && prev !== "/" && prev !== "/app") {
       setCurrentSessionId(null);
       setMessages([]);
       setAttachmentCount(0);
@@ -126,25 +135,39 @@ function ChatInterfaceInner() {
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
-    setMessages([]);
+    let cancelled = false;
 
     async function loadHistory() {
-      if (!currentSessionId) return;
+      if (!currentSessionId) {
+        setMessages([]);
+        return;
+      }
       setIsHistoryLoading(true);
       try {
         const rawHistory = await apiRequest<HistoryMessage[]>(
           `/chat/history/${currentSessionId}`,
         );
-        setMessages(rawHistory.map(hydrateChatMessage));
+        if (cancelled) return;
+        const hydrated = rawHistory.map(hydrateChatMessage);
+        // Avoid wiping an in-flight stream when history was fetched before the server saved messages.
+        if (hydrated.length === 0 && isTypingRef.current) return;
+        setMessages(hydrated);
       } catch (error) {
-        logApiError("Failed to load history", error);
-        setMessages([]);
+        if (!cancelled) {
+          logApiError("Failed to load history", error);
+          if (!isTypingRef.current) setMessages([]);
+        }
       } finally {
-        setIsHistoryLoading(false);
-        requestAnimationFrame(() => scrollToBottom("instant"));
+        if (!cancelled) {
+          setIsHistoryLoading(false);
+          requestAnimationFrame(() => scrollToBottom("instant"));
+        }
       }
     }
-    loadHistory();
+    void loadHistory();
+    return () => {
+      cancelled = true;
+    };
   }, [currentSessionId, setMessages, scrollToBottom]);
 
   const sendMessageRef = useRef(sendMessage);
@@ -188,18 +211,48 @@ function ChatInterfaceInner() {
     await sendMessage(msg, sessionId);
   };
 
-  const handleStarterPrompt = (text: string) => {
-    setInput(text);
+  handleSendRef.current = () => {
+    void handleSend();
   };
 
-  const handleOpenSource = (source: SourceItem) => {
-    if (!source.document_id) return;
-    openPreview({
-      documentId: source.document_id,
-      fileName: source.file_name,
-      pageNumber: source.page_number,
-    });
+  const handleStarterPrompt = (text: string) => {
+    setInput(text);
+    document.getElementById("chat-composer-input")?.focus();
   };
+
+  const scopeDisplay =
+    scopeSuffix != null
+      ? `${scopeLabel(scopeId)} · ${scopeSuffix}`
+      : scopeLabel(scopeId);
+
+  const handleOpenSource = (source: SourceItem, citationIndex: number) => {
+    openFromSource(source, citationIndex);
+  };
+
+  useEffect(() => {
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && (m.sources?.length ?? 0) > 0);
+    if (lastAssistant?.sources) {
+      setPanelSources(lastAssistant.sources);
+    }
+  }, [messages, setPanelSources]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "/") {
+        e.preventDefault();
+        document.getElementById("chat-composer-input")?.focus();
+      }
+      if (mod && e.key === "Enter" && document.activeElement?.id === "chat-composer-input") {
+        e.preventDefault();
+        void handleSendRef.current?.();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleRollback = async (messageId: string) => {
     const sessionId =
@@ -274,146 +327,170 @@ function ChatInterfaceInner() {
 
   const composerFooter =
     attachmentCount > 0
-      ? "This chat searches attached files only · Clip or folder icon to add more"
-      : "Attach files with the clip or pick from library · Without attachments, answers use your full library";
+      ? "Questions search attached files for this conversation."
+      : "Without attachments, answers draw from your indexed project library.";
 
   return (
     <ChatDocumentWorkspace>
-      <div
-        className={cn(
-          "flex flex-col flex-1 min-h-0 relative bg-background",
-          isDragOver && "ring-2 ring-inset ring-primary/30",
-        )}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragOver(true);
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={(e) => void handleDrop(e)}
+      <ChatLayout
+        header={
+          <ChatHeader
+            onOpenSearch={() =>
+              document.querySelector<HTMLInputElement>(
+                '[placeholder="Search conversations…"]',
+              )?.focus()
+            }
+          />
+        }
       >
-        <ChatWorkspaceHeader />
+        <div
+          className={cn(
+            "flex flex-col flex-1 min-h-0 relative",
+            isDragOver && "ring-2 ring-inset ring-[var(--enterprise-accent)]/30",
+          )}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragOver(true);
+          }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(e) => void handleDrop(e)}
+        >
+          <ScrollArea ref={viewportRef} className="flex-1 min-h-0 bg-[var(--enterprise-bg)]">
+            <div className={chatPanelOuterClassName()}>
+              <div
+                className={cn(
+                  chatPanelContentClassName("pb-2"),
+                  "min-h-full flex flex-col",
+                )}
+              >
+                <div className="flex-1 min-h-0">
+                  {currentSessionId && isHistoryLoading ? (
+                    <div className="space-y-4 py-4">
+                      <Skeleton className="h-12 w-full rounded-md" />
+                      <Skeleton className="h-24 w-full rounded-md" />
+                    </div>
+                  ) : showEmptyConversation ? (
+                    <EmptyState onSelectSuggestion={handleStarterPrompt} />
+                  ) : (
+                    messages.map((msg, index) => {
+                      const previous = messages[index - 1];
+                      const showDay =
+                        !previous ||
+                        !isSameCalendarDay(previous.created_at, msg.created_at);
+                      return (
+                        <Fragment key={msg.id}>
+                          {showDay ? (
+                            <ChatDayDivider iso={msg.created_at} />
+                          ) : null}
+                          <ChatMessageItem
+                            message={msg}
+                            scopeLabel={
+                              msg.role === "user" ? scopeDisplay : undefined
+                            }
+                            reportScopeLabel={
+                              msg.role === "user"
+                                ? (() => {
+                                    const next = messages[index + 1];
+                                    const report = next?.media?.find(isReportMedia);
+                                    if (report?.document_names?.length === 1) {
+                                      return report.document_names[0];
+                                    }
+                                    if (report?.document_names?.length) {
+                                      return `${report.document_names.length} selected documents`;
+                                    }
+                                    return reportScope ?? scopeDisplay;
+                                  })()
+                                : undefined
+                            }
+                            onOpenSource={handleOpenSource}
+                            onEdit={handleEdit}
+                            onReviseBlock={handleReviseBlock}
+                            onRollback={handleRollback}
+                            actionsDisabled={isTyping}
+                          />
+                        </Fragment>
+                      );
+                    })
+                  )}
 
-        <ScrollArea ref={viewportRef} className="flex-1 min-h-0">
-          <div className="mx-auto flex w-full max-w-3xl flex-col py-6 px-4 md:px-6">
-            {currentSessionId && isHistoryLoading ? (
-              <div className="space-y-4 py-4">
-                <Skeleton className="h-16 w-2/3 ml-auto rounded-2xl" />
-                <Skeleton className="h-24 w-full rounded-xl" />
-              </div>
-            ) : showEmptyConversation ? (
-              <div className="flex flex-col items-center py-10 text-center">
-                <div className="mb-4 flex size-14 items-center justify-center rounded-2xl border bg-card shadow-sm">
-                  <Sparkles className="size-7 text-primary" />
+                  {isTyping &&
+                    (messages.length === 0 ||
+                      messages[messages.length - 1].role !== "assistant" ||
+                      messages[messages.length - 1].content === "") && (
+                      <RetrievalStatus
+                        statusText={
+                          streamStatus ??
+                          (SLOW_REASONING_MODELS.has(selectedModel)
+                            ? "Analyzing supporting sections…"
+                            : attachmentCount > 0
+                              ? "Searching attached project files…"
+                              : "Searching project documents…")
+                        }
+                        scopeLabel={reportScope}
+                      />
+                    )}
+
+                  <div ref={bottomRef} className="h-2" />
                 </div>
-                <h2 className="text-xl font-semibold tracking-tight">
-                  {currentSessionId
-                    ? attachmentCount > 0
-                      ? "Ask about your attached files"
-                      : "How can I help with your documents?"
-                    : "Chat with your documents"}
-                </h2>
-                <p className="mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
-                  {currentSessionId && attachmentCount > 0
-                    ? "Questions in this thread use only the files attached below."
-                    : "Drop a file here, use the clip to upload, or ask about your library."}
-                </p>
-                <div className="mt-8 w-full text-left">
-                  <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Try asking
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {STARTER_PROMPTS.map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        onClick={() => handleStarterPrompt(prompt)}
-                        className={cn(
-                          "rounded-lg border bg-card px-3 py-2.5 text-left text-sm",
-                          "text-foreground/90 transition-colors hover:border-primary/40 hover:bg-primary/5",
-                        )}
-                      >
-                        {prompt}
-                      </button>
-                    ))}
+
+                <div
+                  className={cn(
+                    "sticky bottom-0 z-10 -mx-1 px-1 pt-6 pb-4 md:pb-5",
+                    "bg-gradient-to-t from-[var(--enterprise-bg)] via-[var(--enterprise-bg)]/95 to-transparent",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "rounded-2xl border border-[var(--enterprise-border)]",
+                      "bg-[var(--enterprise-surface)]/95 shadow-md shadow-black/25",
+                      "ring-1 ring-white/[0.04] p-3 md:p-3.5 space-y-2.5",
+                    )}
+                  >
+                    <UploadStatus />
+                    <AddedContextStrip
+                      attachmentCount={attachmentCount}
+                      onAttachmentCountChange={setAttachmentCount}
+                    />
+                    <ChatComposer
+                      embedded
+                      value={input}
+                      onChange={setInput}
+                      onSend={() => void handleSend()}
+                      isTyping={isTyping}
+                      onStop={stopGeneration}
+                      ensureSession={ensureSession}
+                    />
+                    <p className="text-[11px] text-muted-foreground leading-relaxed px-0.5">
+                      {composerFooter}
+                    </p>
                   </div>
                 </div>
               </div>
-            ) : (
-              messages.map((msg, index) => {
-                const previous = messages[index - 1];
-                const showDay =
-                  !previous ||
-                  !isSameCalendarDay(previous.created_at, msg.created_at);
-                return (
-                  <Fragment key={msg.id}>
-                    {showDay ? <ChatDayDivider iso={msg.created_at} /> : null}
-                    <ChatMessageItem
-                      message={msg}
-                      onOpenSource={handleOpenSource}
-                      onEdit={handleEdit}
-                      onReviseBlock={handleReviseBlock}
-                      onRollback={handleRollback}
-                      actionsDisabled={isTyping}
-                    />
-                  </Fragment>
-                );
-              })
-            )}
+            </div>
+          </ScrollArea>
 
-            {isTyping &&
-              (messages.length === 0 ||
-                messages[messages.length - 1].role !== "assistant" ||
-                messages[messages.length - 1].content === "") && (
-                <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm">
-                  <Loader2 className="size-4 animate-spin shrink-0 text-primary" />
-                  {streamStatus ??
-                    (SLOW_REASONING_MODELS.has(selectedModel)
-                      ? "Analyzing your documents—first reply may take 1–2 minutes…"
-                      : attachmentCount > 0
-                        ? "Searching attached files…"
-                        : "Searching your document library…")}
-                </div>
+          {showScrollBtn && (
+            <button
+              onClick={() => {
+                userScrolledRef.current = false;
+                setShowScrollBtn(false);
+                scrollToBottom("smooth");
+              }}
+              className={cn(
+                "absolute bottom-[152px] left-1/2 -translate-x-1/2 z-20",
+                "flex items-center gap-1.5 rounded-full border border-[var(--enterprise-border)]",
+                "bg-[var(--enterprise-surface)] px-3 py-1.5",
+                "text-xs text-muted-foreground shadow-md",
+                "hover:bg-[var(--enterprise-elevated)] transition-colors",
               )}
-
-            <div ref={bottomRef} className="h-1" />
-          </div>
-        </ScrollArea>
-
-        {showScrollBtn && (
-          <button
-            onClick={() => {
-              userScrolledRef.current = false;
-              setShowScrollBtn(false);
-              scrollToBottom("smooth");
-            }}
-            className={cn(
-              "absolute bottom-[168px] left-1/2 -translate-x-1/2 z-10",
-              "flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5",
-              "text-xs text-muted-foreground shadow-md",
-              "hover:bg-muted transition-colors",
-            )}
-          >
-            <ChevronDown className="size-3.5" />
-            Scroll to bottom
-          </button>
-        )}
-
-        <div className="shrink-0 border-t bg-card/90 backdrop-blur-sm p-4 md:p-5">
-          <ChatComposer
-            value={input}
-            onChange={setInput}
-            onSend={() => void handleSend()}
-            isTyping={isTyping}
-            onStop={stopGeneration}
-            ensureSession={ensureSession}
-            onAttachmentCountChange={setAttachmentCount}
-          />
-
-          <p className="mt-2.5 text-center text-[11px] text-muted-foreground leading-relaxed max-w-3xl mx-auto">
-            {composerFooter}
-          </p>
+            >
+              <ChevronDown className="size-3.5" />
+              Scroll to bottom
+            </button>
+          )}
         </div>
-      </div>
+      </ChatLayout>
+      <ReportViewer />
     </ChatDocumentWorkspace>
   );
 }

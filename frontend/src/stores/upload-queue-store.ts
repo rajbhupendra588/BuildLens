@@ -4,13 +4,15 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import {
   uploadAndIndexDocument,
+  watchIngestJob,
   MAX_DOCUMENT_SIZE,
   maxDocumentSizeLabel,
 } from "@/lib/document-upload";
 import { notifyDocumentsChanged } from "@/lib/document-library-events";
 import { UploadItem } from "@/types/document";
 
-const UPLOAD_CONCURRENCY = 1;
+/** Parallel HTTP uploads (indexing still serialized on server for Docling safety). */
+const UPLOAD_CONCURRENCY = 3;
 
 let isQueueRunning = false;
 const claimedIds = new Set<string>();
@@ -76,7 +78,7 @@ async function uploadOne(
   patchItem: UploadQueueState["patchItem"],
 ) {
   try {
-    await uploadAndIndexDocument(item.file, {
+    const { jobId } = await uploadAndIndexDocument(item.file, {
       sessionId: item.sessionId,
       onProgress: (percent) => {
         if (percent === 100) {
@@ -92,15 +94,37 @@ async function uploadOne(
       onChatReady: () => {
         patchItem(item.id, { chatReady: true });
         toast.success(`${item.file.name} — ready to chat in this conversation`);
-        window.dispatchEvent(new CustomEvent("buildlens:session-attachments-changed"));
+        window.dispatchEvent(
+          new CustomEvent("buildlens:session-attachments-changed"),
+        );
       },
     });
-    patchItem(item.id, { status: "done", progress: 100, chatReady: true });
+
     if (item.sessionId) {
+      patchItem(item.id, { status: "done", progress: 100, chatReady: true });
       window.dispatchEvent(
         new CustomEvent("buildlens:session-attachments-changed"),
       );
+      return;
     }
+
+    patchItem(item.id, {
+      status: "processing",
+      progress: 100,
+      processingStartedAt: Date.now(),
+    });
+
+    watchIngestJob(jobId, {
+      onComplete: () => {
+        patchItem(item.id, { status: "done", progress: 100, chatReady: true });
+        toast.success(`${item.file.name} indexed in library`);
+        notifyDocumentsChanged();
+      },
+      onError: (message) => {
+        patchItem(item.id, { status: "error", error: message });
+        toast.error(`${item.file.name}: ${message}`);
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     patchItem(item.id, { status: "error", error: msg });
@@ -139,19 +163,6 @@ async function runUploadQueue(get: () => UploadQueueState) {
       await Promise.all(
         Array.from({ length: UPLOAD_CONCURRENCY }, () => runWorker(get)),
       );
-    }
-
-    const queue = get().uploadQueue;
-    const doneCount = queue.filter((i) => i.status === "done").length;
-
-    if (doneCount > 0) {
-      notifyDocumentsChanged();
-      const libraryOnly = queue.filter((i) => i.status === "done" && !i.sessionId);
-      if (libraryOnly.length > 0) {
-        toast.success(
-          `${libraryOnly.length} file${libraryOnly.length > 1 ? "s" : ""} indexed in library`,
-        );
-      }
     }
 
     await new Promise((r) => setTimeout(r, 2000));

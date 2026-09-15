@@ -8,6 +8,12 @@ export type ChatSlashCommand = {
 
 export const CHAT_SLASH_COMMANDS: ChatSlashCommand[] = [
   {
+    name: "report",
+    label: "Document Report",
+    description: "Full-document analysis: findings, risks, gaps, and a 5-page PDF",
+    icon: "📄",
+  },
+  {
     name: "briefingdoc",
     label: "Briefing Document",
     description: "Executive summary, findings, and next steps from your sources",
@@ -37,9 +43,33 @@ export function slashForCommand(name: string): string {
   return `/${name}`;
 }
 
-/** True while the user is typing a slash command at the start of the message (no args yet). */
+/** Parsed `/command` prefix at the start of the composer (before optional args). */
+export function parseLeadingSlashCommand(value: string): {
+  token: string;
+  hasArgs: boolean;
+} | null {
+  const match = value.match(/^\/(\w*)([\s\S]*)$/);
+  if (!match) return null;
+  const token = match[1].toLowerCase();
+  const after = match[2];
+  const hasArgs = after.trim().length > 0;
+  return { token, hasArgs };
+}
+
+export function isKnownSlashCommand(token: string): boolean {
+  return CHAT_SLASH_COMMANDS.some((c) => c.name === token.toLowerCase());
+}
+
+/**
+ * Show the picker only while the user is still typing an incomplete command.
+ * Hide once the token is a full command (Enter should send, not pick from the list).
+ */
 export function isSlashCommandMenuOpen(value: string): boolean {
-  return /^\/\w*$/.test(value.trim());
+  const parsed = parseLeadingSlashCommand(value);
+  if (!parsed || parsed.hasArgs) return false;
+  if (!parsed.token) return true;
+  if (isKnownSlashCommand(parsed.token)) return false;
+  return true;
 }
 
 export function getSlashCommandFilter(value: string): string {

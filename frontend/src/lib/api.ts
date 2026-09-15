@@ -1,9 +1,65 @@
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+const AUTH_PAGES = ["/login", "/signup", "/forgot-password", "/reset-password"];
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export async function readApiErrorMessage(response: Response): Promise<string> {
+  const data = await response.json().catch(() => ({}));
+  if (typeof data.detail === "string") return data.detail;
+  if (Array.isArray(data.detail)) {
+    const first = data.detail[0];
+    if (typeof first === "string") return first;
+    if (first && typeof first.msg === "string") return first.msg;
+  }
+  const nestedError = data?.status?.error;
+  if (typeof nestedError === "string") return nestedError;
+  return `API Error: ${response.statusText}`;
+}
+
+function redirectToLoginIfNeeded() {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  if (AUTH_PAGES.some((page) => path === page || path.startsWith(`${page}/`))) {
+    return;
+  }
+  window.location.assign("/login");
+}
+
 /** URL to stream an indexed document's original file (images, PDFs, etc.). */
 export function documentFileUrl(documentId: string): string {
   return `${API_BASE_URL}/documents/${documentId}/file`;
+}
+
+/** Fetch file bytes with the session cookie (required for protected /documents/.../file). */
+export async function fetchDocumentBlob(documentId: string): Promise<Blob> {
+  const response = await fetch(documentFileUrl(documentId), {
+    credentials: "include",
+  });
+  if (response.status === 401) {
+    redirectToLoginIfNeeded();
+    throw new ApiError("Not authenticated.", 401);
+  }
+  if (!response.ok) {
+    throw new ApiError(await readApiErrorMessage(response), response.status);
+  }
+  return response.blob();
+}
+
+export async function fetchDocumentArrayBuffer(
+  documentId: string,
+): Promise<ArrayBuffer> {
+  const blob = await fetchDocumentBlob(documentId);
+  return blob.arrayBuffer();
 }
 
 export function getApiOrigin(): string {
@@ -90,8 +146,9 @@ async function fetchWithRetry(
   for (let attempt = 0; attempt <= attempts; attempt++) {
     try {
       return await fetch(url, {
+        credentials: "include",
         ...options,
-        signal: AbortSignal.timeout(FETCH_ATTEMPT_TIMEOUT_MS),
+        signal: options?.signal ?? AbortSignal.timeout(FETCH_ATTEMPT_TIMEOUT_MS),
       });
     } catch (error) {
       lastError = error;
@@ -125,8 +182,13 @@ export async function apiRequest<T>(
     retries,
   );
 
+  if (response.status === 401) {
+    redirectToLoginIfNeeded();
+    throw new ApiError("Not authenticated.", 401);
+  }
+
   if (!response.ok) {
-    throw new Error(`API Error: ${response.statusText}`);
+    throw new ApiError(await readApiErrorMessage(response), response.status);
   }
 
   return response.json();
@@ -137,8 +199,14 @@ export async function apiStream(
   options?: RequestInit & { signal?: AbortSignal },
 ): Promise<ReadableStreamDefaultReader<Uint8Array>> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
     ...options,
   });
+
+  if (response.status === 401) {
+    redirectToLoginIfNeeded();
+    throw new ApiError("Not authenticated.", 401);
+  }
 
   if (!response.ok || !response.body) {
     throw new Error("Failed to start stream");
@@ -154,6 +222,7 @@ export async function apiUpload<T>(
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     body: formData,
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -221,7 +290,7 @@ export async function pollIngestJobUntilChatReady(
       }
       throw error;
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error("Quick preview timed out. Try asking a question anyway.");
 }
@@ -267,6 +336,7 @@ export function apiUploadWithProgress<T>(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE_URL}${path}`);
+    xhr.withCredentials = true;
     // Up to 1 GB uploads on slower links; indexing is async after this returns.
     xhr.timeout = 30 * 60 * 1000;
 
@@ -306,4 +376,28 @@ export function apiUploadWithProgress<T>(
     xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
     xhr.send(formData);
   });
+}
+
+export function reportPdfUrl(reportId: string): string {
+  return `${API_BASE_URL}/reports/${reportId}/pdf`;
+}
+
+export async function fetchReport(
+  reportId: string,
+): Promise<import("@/types/report").ReportPayload> {
+  return apiRequest(`/reports/${reportId}`);
+}
+
+export async function fetchReportPdfBlob(reportId: string): Promise<Blob> {
+  const response = await fetch(reportPdfUrl(reportId), {
+    credentials: "include",
+  });
+  if (response.status === 401) {
+    redirectToLoginIfNeeded();
+    throw new ApiError("Not authenticated.", 401);
+  }
+  if (!response.ok) {
+    throw new ApiError(await readApiErrorMessage(response), response.status);
+  }
+  return response.blob();
 }

@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest } from "@/lib/api";
 import { useChatStore } from "@/hooks/use-chat-store";
@@ -29,11 +30,36 @@ export function PreferencesSettings() {
   const [themeReady, setThemeReady] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [savingProject, setSavingProject] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setThemeReady(true);
   }, []);
+
+  useEffect(() => {
+    apiRequest<{ project_name: string }>("/workspace")
+      .then((res) => setProjectName(res.project_name ?? ""))
+      .catch(() => setProjectName(""));
+  }, []);
+
+  const saveProjectName = async () => {
+    const name = projectName.trim();
+    if (!name) return;
+    setSavingProject(true);
+    try {
+      await apiRequest("/workspace", {
+        method: "PATCH",
+        body: JSON.stringify({ project_name: name }),
+      });
+      toast.success("Project name updated");
+    } catch {
+      toast.error("Could not save project name");
+    } finally {
+      setSavingProject(false);
+    }
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -108,6 +134,34 @@ export function PreferencesSettings() {
                 {label}
               </Button>
             ))}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Project workspace</p>
+          <p className="text-xs text-muted-foreground">
+            Shown in the chat header and navigation for this deployment.
+          </p>
+          <div className="flex gap-2 max-w-md">
+            <Input
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="e.g. Green Valley Residency"
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void saveProjectName()}
+              disabled={savingProject || !projectName.trim()}
+            >
+              {savingProject ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                "Save"
+              )}
+            </Button>
           </div>
         </div>
 

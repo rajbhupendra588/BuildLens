@@ -51,6 +51,7 @@ services:
       - backend_venv:/app/.venv
       - backend_model_cache:/app/.cache
       - ./uploads_data:/app/uploads_data
+      - ./reports_data:/app/reports_data
     # No --reload: hot reload kills in-flight PDF ingest (OCR can run 10+ minutes).
     command: sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
     mem_limit: 4g
@@ -64,6 +65,8 @@ services:
       - MALLOC_ARENA_MAX=2
       - PYTHONDONTWRITEBYTECODE=1
       - FASTEMBED_CACHE_DIR=/app/.cache/fastembed
+      # Ingest master plans worker threads in-process (see INGEST__* in .env).
+      - INGEST__WORKER_MEMORY_BUDGET_GB=4
     depends_on:
       qdrant:
         condition: service_healthy
@@ -82,7 +85,8 @@ services:
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
-    command: npm run dev
+    # Install when package.json changes (node_modules live in named volume).
+    command: sh -c "npm install && npm run dev"
     networks:
       - buildlens-net
 

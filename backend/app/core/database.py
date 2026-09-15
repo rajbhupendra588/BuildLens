@@ -11,6 +11,12 @@ engine = create_engine(
 )
 
 def init_db():
+    # Register auth tables with SQLModel metadata before create_all.
+    from app.models.user import User as _User  # noqa: F401
+    from app.models.auth_session import AuthSession as _AuthSession  # noqa: F401
+    from app.models.password_reset import PasswordResetToken as _PasswordResetToken  # noqa: F401
+    from app.models.ingest_job import IngestJob as _IngestJob  # noqa: F401
+    from app.models.report import DocumentReport as _DocumentReport  # noqa: F401
     """Create all tables defined in Models, then apply incremental migrations."""
     SQLModel.metadata.create_all(engine)
     _migrate()
@@ -28,6 +34,15 @@ def _migrate():
         ))
         conn.execute(text(
             "ALTER TABLE chatmessage ADD COLUMN IF NOT EXISTS media JSON"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chatsession ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE"
+        ))
+        conn.execute(text(
+            "ALTER TABLE chatsession ADD COLUMN IF NOT EXISTS user_id UUID"
+        ))
+        conn.execute(text(
+            "ALTER TABLE documentcatalog ADD COLUMN IF NOT EXISTS user_id UUID"
         ))
         conn.commit()
 

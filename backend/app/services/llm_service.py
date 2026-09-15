@@ -467,4 +467,117 @@ class LLMService:
         )
 
 
+    async def generate_text(
+        self,
+        prompt: str,
+        system: str,
+        provider: str,
+        model: str,
+        api_key: Optional[str] = None,
+        max_tokens: int = 4096,
+    ) -> str:
+        """Non-streaming completion used by structured report extraction."""
+        provider = (provider or "ollama").lower()
+        if provider == "ollama":
+            return await self._complete_ollama(model, prompt, system)
+        if provider == "openai":
+            return await self._complete_openai(model, prompt, system, api_key, max_tokens)
+        if provider == "gemini":
+            return await self._complete_gemini(model, prompt, system, api_key)
+        if provider == "openrouter":
+            return await self._complete_openrouter(model, prompt, system, api_key, max_tokens)
+        raise RuntimeError(f"Unsupported provider: {provider}")
+
+    async def _complete_ollama(self, model: str, prompt: str, system: str) -> str:
+        collected = ""
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream(
+                "POST",
+                f"{self.ollama_base_url}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "system": system,
+                    "stream": True,
+                    "options": {"temperature": 0},
+                },
+            ) as resp:
+                if resp.status_code != 200:
+                    body = await resp.aread()
+                    raise RuntimeError(f"Ollama error {resp.status_code}: {body.decode()}")
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    collected += data.get("response", "")
+                    if data.get("done"):
+                        break
+        return collected
+
+    async def _complete_openai(
+        self,
+        model: str,
+        prompt: str,
+        system: str,
+        api_key: Optional[str],
+        max_tokens: int,
+    ) -> str:
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=api_key or settings.LLM.OPENAI_API_KEY)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0,
+        )
+        return resp.choices[0].message.content or ""
+
+    async def _complete_gemini(
+        self, model: str, prompt: str, system: str, api_key: Optional[str]
+    ) -> str:
+        import google.generativeai as genai
+
+        genai.configure(api_key=api_key or settings.LLM.GEMINI_API_KEY)
+        instance = genai.GenerativeModel(
+            model_name=model,
+            system_instruction=system,
+        )
+        response = await instance.generate_content_async(prompt)
+        return response.text or ""
+
+    async def _complete_openrouter(
+        self,
+        model: str,
+        prompt: str,
+        system: str,
+        api_key: Optional[str],
+        max_tokens: int,
+    ) -> str:
+        if not api_key:
+            raise RuntimeError("OpenRouter API key is not configured. Add it in Settings.")
+        client = self._openrouter_client(api_key)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0,
+            extra_body={"reasoning": {"max_tokens": 1024}},
+        )
+        message = resp.choices[0].message
+        text = self._coerce_text(getattr(message, "content", None))
+        if text:
+            return text
+        return self._visible_answer_from_reasoning(
+            self._coerce_text(getattr(message, "reasoning", None))
+            or self._coerce_text(getattr(message, "reasoning_content", None))
+        )
+
+
 llm_service = LLMService()

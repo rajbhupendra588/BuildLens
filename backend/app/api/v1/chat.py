@@ -8,16 +8,31 @@ import uuid
 import json
 
 from app.core.database import get_session
+from app.core.deps import get_current_user
 from app.models.chat import ChatSession, ChatMessage
+from app.models.user import User
+from app.services.access_control import (
+    filter_documents_for_user,
+    require_chat_session,
+    require_document_owned,
+)
 from app.services.retrieval_service import retrieval_service
 from app.services.vector_service import vector_service
 from app.services.llm_service import llm_service
 from app.services.chat_history_service import chat_history_service
 from app.services.intent_service import IntentMode, intent_classifier
 from app.services.slash_command_service import parse_slash_command
+from app.services.report_chat_service import report_followup_chunks, stream_report_command
+from app.services.report_service import report_service
 from app.services.settings_service import settings_service
 from app.services.media_resolver import build_media_attachments, is_image_filename
 from app.services.document_storage_service import document_storage
+from app.services.document_catalog_service import document_catalog_service
+from app.services.quick_extract_service import is_placeholder_preview
+from app.services.source_location_service import (
+    enrich_location_metadata,
+    format_location_label,
+)
 from app.services.session_attachment_service import (
     attach_library_document,
     build_session_context_chunks,
@@ -30,6 +45,65 @@ from app.services.session_attachment_service import (
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
+
+async def _library_documents(db: Session, user: User) -> list[dict]:
+    docs = await retrieval_service.list_indexed_documents()
+    docs = filter_documents_for_user(db, user, docs)
+    return document_catalog_service.enrich_documents(db, docs)
+
+
+def _assign_source_indices(context_chunks: list[dict]) -> None:
+    """Number evidence chunks for LLM [n] citations and UI source cards."""
+    index = 0
+    for chunk in context_chunks:
+        meta = chunk.setdefault("metadata", {})
+        enrich_location_metadata(meta, chunk.get("content") or "")
+        if meta.get("element_type") in ("routing_hint", "inventory"):
+            meta["source_index"] = None
+            continue
+        index += 1
+        meta["source_index"] = index
+
+
+def _source_card_from_chunk(chunk: dict) -> dict:
+    meta = dict(chunk.get("metadata") or {})
+    content = chunk.get("content") or ""
+    enrich_location_metadata(meta, content)
+    file_name = meta.get("file_name", "Unknown")
+    return {
+        "document_id": meta.get("document_id"),
+        "chunk_id": meta.get("chunk_id") or chunk.get("chunk_id"),
+        "file_name": file_name,
+        "score": round(float(chunk.get("score", 0)), 3),
+        "snippet": content[:200],
+        "page_number": meta.get("page_number"),
+        "section_title": meta.get("section_title"),
+        "paragraph_index": meta.get("paragraph_index"),
+        "line_start": meta.get("line_start"),
+        "line_end": meta.get("line_end"),
+        "location_label": format_location_label(meta),
+        "source_index": meta.get("source_index"),
+        "language": meta.get("language"),
+        "element_type": meta.get("element_type"),
+        "is_image": is_image_filename(file_name),
+        "bbox": meta.get("bbox"),
+        "collection": meta.get("collection"),
+    }
+
+
+def _attachment_matches_scope(db: Session, document_id: str, file_name: str, scope: str | None) -> bool:
+    if not scope or scope == "all":
+        return True
+    from app.services.collection_classifier import scope_to_collection, classify_collection
+
+    target = scope_to_collection(scope)
+    if not target:
+        return True
+    row = document_catalog_service.get(db, document_id)
+    collection = row.collection if row else classify_collection(file_name)
+    return collection == target
+
+
 # Skip vector search for short conversational messages (faster replies, fewer irrelevant sources).
 _CONVERSATIONAL_QUERY = re.compile(
     r"^(hi|hello|hey|thanks|thank you|good morning|good evening|bye|ok|okay)[!.?\s]*$",
@@ -37,15 +111,21 @@ _CONVERSATIONAL_QUERY = re.compile(
 )
 
 @router.post("/ask")
-async def ask_question(question: str):
+async def ask_question(
+    question: str,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
     if retrieval_service.is_knowledge_base_inventory_query(question):
-        docs = await retrieval_service.list_indexed_documents()
-        stats = vector_service.get_stats()
+        docs = await _library_documents(db, current_user)
+        total_chunks = sum(d.get("chunk_count", 0) for d in docs)
         context_chunks = retrieval_service.build_inventory_context_chunks(
-            docs, stats["total_chunks"]
+            docs, total_chunks
         )
     else:
-        context_chunks = await retrieval_service.search(question, limit=5)
+        context_chunks = await retrieval_service.search(
+            question, limit=5, owner_user_id=current_user.id
+        )
 
     if not context_chunks:
         return {
@@ -61,25 +141,52 @@ async def ask_question(question: str):
     }
 
 @router.post("/sessions")
-async def create_new_session(db: Session = Depends(get_session)):
-    new_session = chat_history_service.create_session(db)
+async def create_new_session(
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    new_session = chat_history_service.create_session(db, user_id=current_user.id)
     return {"id": new_session.id, "title": new_session.title, "created_at": new_session.created_at}
 
 @router.get("/sessions")
-async def list_sessions(db: Session = Depends(get_session)):
-    statement = select(ChatSession).order_by(ChatSession.created_at.desc())
+async def list_sessions(
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    statement = (
+        select(ChatSession)
+        .where(ChatSession.user_id == current_user.id)
+        .order_by(ChatSession.is_pinned.desc(), ChatSession.updated_at.desc())
+    )
     sessions = db.exec(statement).all()
     return sessions
 
 @router.patch("/sessions/{session_id}")
-async def rename_session(session_id: uuid.UUID, title: str, db: Session = Depends(get_session)):
-    updated_session = chat_history_service.update_session_title(db, session_id, title)
-    if not updated_session:
+async def update_session(
+    session_id: uuid.UUID,
+    title: Optional[str] = Query(None),
+    is_pinned: Optional[bool] = Query(None),
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    session = require_chat_session(db, current_user, session_id)
+    if title is not None and title.strip():
+        session = chat_history_service.update_session_title(
+            db, session_id, title.strip()
+        )
+    if is_pinned is not None:
+        session = chat_history_service.set_session_pinned(db, session_id, is_pinned)
+    if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return updated_session
+    return session
 
 @router.delete("/sessions/{session_id}")
-async def remove_session(session_id: uuid.UUID, db: Session = Depends(get_session)):
+async def remove_session(
+    session_id: uuid.UUID,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    require_chat_session(db, current_user, session_id)
     success = chat_history_service.delete_session(db, session_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -94,20 +201,28 @@ async def attach_library_document_to_session(
     session_id: uuid.UUID,
     payload: AttachLibraryDocumentPayload,
     db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Link an indexed library file to a conversation (e.g. open chat from Library)."""
-    session = db.get(ChatSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    require_chat_session(db, current_user, session_id)
 
     document_id = payload.document_id.strip()
     if not document_id:
         raise HTTPException(status_code=400, detail="document_id is required")
 
-    docs = await retrieval_service.list_indexed_documents()
+    catalog_row = document_catalog_service.get(db, document_id)
+    if catalog_row is not None:
+        require_document_owned(db, current_user, document_id)
+
+    docs = await _library_documents(db, current_user)
     doc_meta = next((d for d in docs if d["document_id"] == document_id), None)
     path = document_storage.find_path(document_id)
-    if not doc_meta and not path:
+    if doc_meta is None:
+        session_rows = list_for_session(session_id)
+        on_session = any(r.document_id == document_id for r in session_rows)
+        if not on_session:
+            raise HTTPException(status_code=404, detail="Document not found in library")
+    elif not path and not doc_meta:
         raise HTTPException(status_code=404, detail="Document not found in library")
 
     file_name = (
@@ -140,12 +255,11 @@ async def attach_library_document_to_session(
 async def list_session_attachments(
     session_id: uuid.UUID,
     db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
-    session = db.get(ChatSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    require_chat_session(db, current_user, session_id)
     rows = list_for_session(session_id)
-    indexed_docs = await retrieval_service.list_indexed_documents()
+    indexed_docs = await _library_documents(db, current_user)
     indexed_ids = {d["document_id"] for d in indexed_docs if d.get("document_id")}
 
     payload: list[dict] = []
@@ -173,10 +287,9 @@ async def remove_session_attachment(
     session_id: uuid.UUID,
     attachment_id: uuid.UUID,
     db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
-    session = db.get(ChatSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    require_chat_session(db, current_user, session_id)
     if not detach_from_session(session_id, attachment_id):
         raise HTTPException(status_code=404, detail="Attachment not found")
     return {"message": "Attachment removed from conversation"}
@@ -187,11 +300,10 @@ async def rollback_from_message(
     session_id: uuid.UUID,
     message_id: uuid.UUID,
     db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Remove this message and every message after it in the conversation."""
-    session = db.get(ChatSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    require_chat_session(db, current_user, session_id)
 
     deleted = chat_history_service.rollback_from_message(db, session_id, message_id)
     if deleted is None:
@@ -202,11 +314,10 @@ async def rollback_from_message(
 @router.get("/history/{session_id}")
 async def get_chat_history(
     session_id: uuid.UUID,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
-    session = db.get(ChatSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    require_chat_session(db, current_user, session_id)
 
     messages = chat_history_service.get_session_message(db, session_id)
     return [
@@ -250,9 +361,20 @@ async def ask_question_stream(
     model: str = Query("minimax-m2:cloud"),
     top_k: Optional[int] = Query(None),
     score_threshold: Optional[float] = Query(None),
+    document_scope: Optional[str] = Query(
+        None,
+        description="Library filter: all, structural, architectural, etc.",
+    ),
+    report_id: Optional[uuid.UUID] = Query(
+        None,
+        description="Optional generated report to include as follow-up context.",
+    ),
     background_tasks: BackgroundTasks = None,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
+    require_chat_session(db, current_user, session_id)
+
     user_row = chat_history_service.add_message(
         db, session_id, "user", question, provider, model
     )
@@ -290,6 +412,8 @@ async def ask_question_stream(
             title_seed = "Infographic summary"
         elif slash.command == "dashboard":
             title_seed = "Visual dashboard"
+        elif slash.command == "report":
+            title_seed = "Document report"
         background_tasks.add_task(
             update_session_title_logic,
             db,
@@ -300,8 +424,17 @@ async def ask_question_stream(
             api_key,
         )
 
-    indexed_docs = await retrieval_service.list_indexed_documents()
+    indexed_docs = await _library_documents(db, current_user)
+    indexed_docs = document_catalog_service.filter_documents_by_scope(
+        db, indexed_docs, document_scope
+    )
     session_attachments = list_for_session(session_id)
+    if document_scope and document_scope != "all":
+        session_attachments = [
+            a
+            for a in session_attachments
+            if _attachment_matches_scope(db, a.document_id, a.file_name, document_scope)
+        ]
     scoped_document_ids = (
         [a.document_id for a in session_attachments]
         if session_attachments
@@ -324,6 +457,24 @@ async def ask_question_stream(
                     }
                 )
 
+    if slash.command == "report":
+        scoped_library_ids = [
+            d["document_id"] for d in search_pool if d.get("document_id")
+        ]
+        return StreamingResponse(
+            stream_report_command(
+                db=db,
+                current_user=current_user,
+                session_id=session_id,
+                user_row=user_row,
+                provider=provider,
+                model=model,
+                api_key=api_key,
+                scoped_library_ids=scoped_library_ids,
+            ),
+            media_type="text/event-stream",
+        )
+
     target_document_ids = retrieval_service.resolve_query_to_documents(
         retrieval_query, search_pool
     )
@@ -336,9 +487,23 @@ async def ask_question_stream(
 
     search_document_ids = target_document_ids or scoped_document_ids
     session_context_filter = target_document_ids or scoped_document_ids
+    indexed_ids = {
+        d["document_id"] for d in indexed_docs if d.get("document_id")
+    }
     session_context = build_session_context_chunks(
-        session_id, document_ids=session_context_filter
+        session_id,
+        document_ids=session_context_filter,
+        indexed_document_ids=indexed_ids,
     )
+    if report_id is not None:
+        try:
+            report_row = report_service.get_owned(db, current_user, report_id)
+            if isinstance(report_row.content, dict):
+                session_context = (
+                    report_followup_chunks(report_row.content) + session_context
+                )
+        except HTTPException:
+            pass
 
     search_limit = top_k
     if slash.forced_mode in (
@@ -352,6 +517,38 @@ async def ask_question_stream(
         search_limit = max(search_limit, 8)
 
     docs_for_media = search_pool if scoped_document_ids else indexed_docs
+
+    scope_blocks_rag = (
+        document_scope
+        and document_scope != "all"
+        and not _CONVERSATIONAL_QUERY.match(question.strip())
+        and not search_pool
+        and not session_attachments
+    )
+    if scope_blocks_rag:
+        scope_label = document_scope.replace("-", " ").replace("_", " ")
+        err_text = (
+            f"No documents in the selected scope ({scope_label}). "
+            "Upload matching documents or switch scope to All Project Documents."
+        )
+
+        async def scope_empty_stream():
+            yield f"data: {json.dumps({'type': 'user_message', 'id': str(user_row.id), 'created_at': user_row.created_at.isoformat()})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'text': 'Searching project documents…'})}\n\n"
+            yield f"data: {json.dumps({'type': 'sources', 'sources': []})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'content': err_text})}\n\n"
+            assistant_row = chat_history_service.add_message(
+                db,
+                session_id,
+                "assistant",
+                err_text,
+                provider,
+                model,
+                sources=[],
+            )
+            yield f"data: {json.dumps({'type': 'assistant_saved', 'id': str(assistant_row.id), 'created_at': assistant_row.created_at.isoformat()})}\n\n"
+
+        return StreamingResponse(scope_empty_stream(), media_type="text/event-stream")
 
     if _CONVERSATIONAL_QUERY.match(question.strip()):
         vector_chunks = []
@@ -374,6 +571,7 @@ async def ask_question_stream(
                 limit=search_limit,
                 min_score=score_threshold,
                 document_ids=search_document_ids,
+                owner_user_id=current_user.id,
             )
     else:
         vector_chunks = await retrieval_service.search(
@@ -381,14 +579,23 @@ async def ask_question_stream(
             limit=search_limit,
             min_score=score_threshold,
             document_ids=search_document_ids,
+            owner_user_id=current_user.id,
         )
 
     context_chunks = merge_with_vector_results(
         session_context, vector_chunks, limit=search_limit
     )
+    context_chunks = [
+        c
+        for c in context_chunks
+        if (c.get("metadata") or {}).get("element_type")
+        in ("routing_hint", "inventory")
+        or not is_placeholder_preview(c.get("content"))
+    ]
     context_chunks = retrieval_service.rerank_chunks_by_filename(
         retrieval_query, context_chunks
     )
+    _assign_source_indices(context_chunks)
 
     if scoped_document_ids:
         attached_names = [
@@ -433,20 +640,26 @@ async def ask_question_stream(
     )
 
     # Build serialisable source cards from retrieved chunks
-    source_cards = [
-        {
-            "document_id": c["metadata"].get("document_id"),
-            "file_name": c["metadata"].get("file_name", "Unknown"),
-            "score": round(c["score"], 3),
-            "snippet": (c["content"] or "")[:200],
-            "page_number": c["metadata"].get("page_number"),
-            "section_title": c["metadata"].get("section_title"),
-            "language": c["metadata"].get("language"),
-            "element_type": c["metadata"].get("element_type"),
-            "is_image": is_image_filename(c["metadata"].get("file_name", "")),
-        }
+    doc_ids_for_cards = [
+        (c.get("metadata") or {}).get("document_id")
         for c in context_chunks
+        if (c.get("metadata") or {}).get("document_id")
     ]
+    collection_map = document_catalog_service.collections_for_ids(
+        db, doc_ids_for_cards
+    )
+    source_cards = []
+    for chunk in context_chunks:
+        meta = chunk.get("metadata") or {}
+        if meta.get("element_type") in ("routing_hint", "inventory"):
+            continue
+        if meta.get("source_index") is None:
+            continue
+        card = _source_card_from_chunk(chunk)
+        doc_id = card.get("document_id")
+        if doc_id and doc_id in collection_map:
+            card["collection"] = collection_map[doc_id]
+        source_cards.append(card)
 
     # Classify intent using source metadata signals + query patterns (zero I/O)
     source_metadata = [c["metadata"] for c in context_chunks]
@@ -529,9 +742,14 @@ async def ask_question_stream(
 # ---------------------------------------------------------------------------
 
 @router.get("/export")
-async def export_chat(db: Session = Depends(get_session)):
+async def export_chat(
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
     """Export all chat sessions and messages as JSON."""
-    sessions = db.exec(select(ChatSession)).all()
+    sessions = db.exec(
+        select(ChatSession).where(ChatSession.user_id == current_user.id)
+    ).all()
     result = []
     for session in sessions:
         msgs = db.exec(
@@ -573,13 +791,18 @@ class ImportSessionPayload(BaseModel):
 
 
 @router.post("/import")
-async def import_chat(sessions: List[ImportSessionPayload], db: Session = Depends(get_session)):
+async def import_chat(
+    sessions: List[ImportSessionPayload],
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
     """Import chat sessions and messages from a JSON export."""
     for sess_data in sessions:
         new_session = ChatSession(
             title=sess_data.title,
             provider=sess_data.provider,
             model_name=sess_data.model_name,
+            user_id=current_user.id,
         )
         db.add(new_session)
         db.commit()

@@ -12,6 +12,7 @@ interface ChatState {
   addSession: (session: ChatSession) => void;
   removeSession: (id: string) => void;
   updateSessionTitle: (id: string, title: string) => void;
+  updateSessionPin: (id: string, isPinned: boolean) => void;
 
   // LLM model selection (persisted to localStorage)
   selectedProvider: string;
@@ -44,6 +45,12 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           sessions: state.sessions.map((s) =>
             s.id === id ? { ...s, title } : s,
+          ),
+        })),
+      updateSessionPin: (id, isPinned) =>
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === id ? { ...s, is_pinned: isPinned } : s,
           ),
         })),
 
