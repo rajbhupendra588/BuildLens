@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, func, or_
@@ -136,6 +136,87 @@ def mark_error(
     job.updated_at = datetime.utcnow()
     session.add(job)
     session.commit()
+
+
+def reclaim_stale_processing_jobs(session: Session) -> int:
+    """
+    After API/worker restart, jobs left in 'processing' are never claimed again.
+    Re-queue them so indexing can finish or fail with a visible error.
+    Missing originals are marked error instead of looping forever.
+    """
+    from app.services.document_storage_service import document_storage
+
+    stmt = select(IngestJob).where(IngestJob.status == "processing")
+    jobs = list(session.exec(stmt).all())
+    if not jobs:
+        return 0
+    now = datetime.utcnow()
+    requeued = 0
+    for job in jobs:
+        if not document_storage.exists(job.document_id):
+            job.status = "error"
+            job.error_detail = (
+                "Original file is gone (deleted or lost during a restart). "
+                "Upload the file again to index it."
+            )[:2048]
+            job.finished_at = now
+            job.updated_at = now
+            job.worker_id = None
+            job.started_at = None
+            session.add(job)
+            continue
+        from app.services.vector_service import vector_service
+
+        existing_chunks = vector_service.count_chunks_for_document(job.document_id)
+        started = job.started_at or job.updated_at
+        stale = started is None or (now - started) > timedelta(hours=2)
+        if existing_chunks > 0 and stale:
+            job.status = "success"
+            job.message = (
+                f"Already indexed ({existing_chunks} chunks). "
+                "Skipped a full re-index after server restart."
+            )
+            job.result = {
+                **(job.result or {}),
+                "status": "success",
+                "chunk_count": existing_chunks,
+            }
+            job.finished_at = now
+            job.updated_at = now
+            job.worker_id = None
+            session.add(job)
+            continue
+        had_quick = bool((job.result or {}).get("chat_ready"))
+        if job.session_id and had_quick:
+            job.status = "quick_ready"
+            job.message = "Resuming full indexing after server restart."
+        else:
+            job.status = "queued"
+            job.message = "Re-queued after server restart."
+        job.worker_id = None
+        job.started_at = None
+        job.updated_at = now
+        session.add(job)
+        requeued += 1
+    session.commit()
+    return requeued
+
+
+def latest_jobs_for_user(
+    session: Session, user_id: uuid.UUID
+) -> dict[str, IngestJob]:
+    """Most recent ingest job per document_id for this user."""
+    stmt = (
+        select(IngestJob)
+        .where(IngestJob.owner_user_id == user_id)
+        .order_by(IngestJob.document_id, IngestJob.created_at.desc())
+    )
+    rows = session.exec(stmt).all()
+    latest: dict[str, IngestJob] = {}
+    for job in rows:
+        if job.document_id not in latest:
+            latest[job.document_id] = job
+    return latest
 
 
 def claim_next_job(session: Session, worker_id: str) -> IngestJob | None:

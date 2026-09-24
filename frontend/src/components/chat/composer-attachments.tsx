@@ -21,21 +21,29 @@ export interface SessionAttachmentRow {
 
 interface ComposerAttachmentsProps {
   onAttachmentsChange?: (count: number) => void;
+  className?: string;
+  /** Render inside the unified composer card (Cursor-style pills). */
+  integrated?: boolean;
 }
 
 export function ComposerAttachments({
   onAttachmentsChange,
+  className,
+  integrated,
 }: ComposerAttachmentsProps) {
   const activeSessionId = useActiveChatSessionId();
   const { openPreview } = useChatDocumentPreview();
   const uploadQueue = useUploadQueueStore((s) => s.uploadQueue);
   const [rows, setRows] = useState<SessionAttachmentRow[]>([]);
 
-  const pendingUploads = uploadQueue.filter(
+  const sessionUploads = uploadQueue.filter(
     (item) =>
       item.sessionId === activeSessionId &&
       item.status !== "done" &&
       item.status !== "error",
+  );
+  const pendingUploads = sessionUploads.filter(
+    (item) => item.status !== "uploading",
   );
 
   const load = useCallback(async () => {
@@ -75,8 +83,8 @@ export function ComposerAttachments({
   }, [rows, load]);
 
   useEffect(() => {
-    onAttachmentsChange?.(rows.length + pendingUploads.length);
-  }, [rows.length, pendingUploads.length, onAttachmentsChange]);
+    onAttachmentsChange?.(rows.length + sessionUploads.length);
+  }, [rows.length, sessionUploads.length, onAttachmentsChange]);
 
   const handleRemove = async (row: SessionAttachmentRow) => {
     if (!activeSessionId) return;
@@ -92,17 +100,22 @@ export function ComposerAttachments({
     }
   };
 
-  if (!activeSessionId || (rows.length === 0 && pendingUploads.length === 0)) {
+  if (!activeSessionId || (rows.length === 0 && sessionUploads.length === 0)) {
     return null;
   }
 
+  const pillClass = integrated
+    ? "inline-flex max-w-[min(100%,280px)] items-center gap-1 rounded-md bg-muted/60 px-2 py-1 text-[11px] text-foreground/90"
+    : "inline-flex max-w-[240px] items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs";
+
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className={cn("flex flex-wrap gap-1.5", className)}>
       {pendingUploads.map((item) => (
         <div
           key={item.id}
           className={cn(
-            "inline-flex max-w-[240px] items-center gap-1.5 rounded-full border border-dashed bg-muted/30 px-2.5 py-0.5 text-xs text-muted-foreground",
+            pillClass,
+            integrated && "border border-dashed border-border/60",
           )}
         >
           <FileText className="size-3 shrink-0" />
@@ -111,12 +124,7 @@ export function ComposerAttachments({
         </div>
       ))}
       {rows.map((row) => (
-        <div
-          key={row.id}
-          className={cn(
-            "inline-flex max-w-[240px] items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs",
-          )}
-        >
+        <div key={row.id} className={pillClass}>
           <button
             type="button"
             className="flex min-w-0 flex-1 items-center gap-1 hover:text-primary"

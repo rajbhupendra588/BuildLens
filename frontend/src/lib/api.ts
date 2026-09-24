@@ -1,3 +1,7 @@
+import { percentFromBytes, type HttpUploadProgress } from "@/lib/upload-progress";
+
+export type { HttpUploadProgress };
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -331,7 +335,7 @@ export async function pollIngestJob(
 export function apiUploadWithProgress<T>(
   path: string,
   formData: FormData,
-  onProgress: (percent: number) => void,
+  onProgress: (progress: HttpUploadProgress) => void,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -341,8 +345,12 @@ export function apiUploadWithProgress<T>(
     xhr.timeout = 30 * 60 * 1000;
 
     xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable)
-        onProgress(Math.round((e.loaded / e.total) * 100));
+      if (!e.lengthComputable) return;
+      onProgress({
+        loaded: e.loaded,
+        total: e.total,
+        percent: percentFromBytes(e.loaded, e.total),
+      });
     });
 
     xhr.addEventListener("load", () => {

@@ -7,7 +7,13 @@ import {
   watchIngestJob,
   MAX_DOCUMENT_SIZE,
   maxDocumentSizeLabel,
+  isLargeBackgroundUpload,
 } from "@/lib/document-upload";
+import {
+  notifyBackgroundUploadStarted,
+  notifyUploadOutcome,
+  prepareUploadNotifications,
+} from "@/lib/upload-notifications";
 import { notifyDocumentsChanged } from "@/lib/document-library-events";
 import { UploadItem } from "@/types/document";
 
@@ -21,6 +27,7 @@ interface UploadQueueState {
   uploadQueue: UploadItem[];
   enqueueFiles: (files: File[], sessionId?: string | null) => void;
   patchItem: (id: string, patch: Partial<UploadItem>) => void;
+  removeItem: (id: string) => void;
   clearFinished: () => void;
 }
 
@@ -32,6 +39,12 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
       uploadQueue: state.uploadQueue.map((item) =>
         item.id === id ? { ...item, ...patch } : item,
       ),
+    }));
+  },
+
+  removeItem: (id) => {
+    set((state) => ({
+      uploadQueue: state.uploadQueue.filter((item) => item.id !== id),
     }));
   },
 
@@ -60,10 +73,16 @@ export const useUploadQueueStore = create<UploadQueueState>((set, get) => ({
         file,
         status: "pending",
         progress: 0,
+        bytesLoaded: 0,
+        bytesTotal: file.size,
         sessionId: sessionId ?? undefined,
       });
     }
     if (validItems.length === 0) return;
+
+    if (validItems.some((i) => isLargeBackgroundUpload(i.file))) {
+      prepareUploadNotifications();
+    }
 
     set((state) => ({
       uploadQueue: [...state.uploadQueue, ...validItems],
@@ -77,30 +96,68 @@ async function uploadOne(
   item: UploadItem,
   patchItem: UploadQueueState["patchItem"],
 ) {
+  const large = isLargeBackgroundUpload(item.file);
+
   try {
     const { jobId } = await uploadAndIndexDocument(item.file, {
       sessionId: item.sessionId,
-      onProgress: (percent) => {
-        if (percent === 100) {
+      runInBackground: large,
+      disableBackgroundWatch: true,
+      notifyOnIndex: false,
+      onProgress: (percent, bytes) => {
+        const now = Date.now();
+        const current = useUploadQueueStore
+          .getState()
+          .uploadQueue.find((i) => i.id === item.id);
+        const loaded = bytes?.loaded ?? current?.bytesLoaded ?? 0;
+        const total = bytes?.total || current?.bytesTotal || item.file.size;
+        const uploadStartedAt = current?.uploadStartedAt ?? now;
+        if (percent >= 100) {
           patchItem(item.id, {
-            progress: percent,
+            progress: 100,
+            bytesLoaded: total,
+            bytesTotal: total,
+            uploadStartedAt,
             status: "processing",
-            processingStartedAt: Date.now(),
+            processingStartedAt: now,
           });
-        } else {
-          patchItem(item.id, { progress: percent, status: "uploading" });
+          return;
         }
+        patchItem(item.id, {
+          progress: percent,
+          bytesLoaded: loaded,
+          bytesTotal: total,
+          uploadStartedAt,
+          status: "uploading",
+        });
       },
       onChatReady: () => {
-        patchItem(item.id, { chatReady: true });
-        toast.success(`${item.file.name} — ready to chat in this conversation`);
+        patchItem(item.id, {
+          chatReady: true,
+          ...(large ? { status: "done" as const, progress: 100 } : {}),
+        });
+        if (!large) {
+          toast.success(`${item.file.name} — ready to chat in this conversation`);
+        }
         window.dispatchEvent(
           new CustomEvent("buildlens:session-attachments-changed"),
         );
       },
     });
 
+    if (large) {
+      notifyBackgroundUploadStarted(item.file.name, item.file.size);
+    }
+
     if (item.sessionId) {
+      if (large) {
+        patchItem(item.id, {
+          status: "processing",
+          progress: 100,
+          processingStartedAt: Date.now(),
+        });
+        return;
+      }
       patchItem(item.id, { status: "done", progress: 100, chatReady: true });
       window.dispatchEvent(
         new CustomEvent("buildlens:session-attachments-changed"),
@@ -115,9 +172,13 @@ async function uploadOne(
     });
 
     watchIngestJob(jobId, {
+      notifyOnResult: large,
+      fileName: item.file.name,
       onComplete: () => {
         patchItem(item.id, { status: "done", progress: 100, chatReady: true });
-        toast.success(`${item.file.name} indexed in library`);
+        if (!large) {
+          toast.success(`${item.file.name} indexed in library`);
+        }
         notifyDocumentsChanged();
       },
       onError: (message) => {
@@ -128,7 +189,11 @@ async function uploadOne(
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     patchItem(item.id, { status: "error", error: msg });
-    toast.error(`${item.file.name}: ${msg}`);
+    if (large) {
+      notifyUploadOutcome(item.file.name, "upload-failed", msg);
+    } else {
+      toast.error(`${item.file.name}: ${msg}`);
+    }
   }
 }
 
@@ -140,7 +205,13 @@ async function runWorker(get: () => UploadQueueState) {
     );
     if (!item) break;
     claimedIds.add(item.id);
-    patchItem(item.id, { status: "uploading", progress: 0 });
+    patchItem(item.id, {
+      status: "uploading",
+      progress: 0,
+      bytesLoaded: 0,
+      bytesTotal: item.file.size,
+      uploadStartedAt: Date.now(),
+    });
     await uploadOne(item, patchItem);
     const next = get().uploadQueue;
     const pending = next.find(

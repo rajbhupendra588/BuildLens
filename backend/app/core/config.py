@@ -25,13 +25,21 @@ class IngestSettings(BaseSettings):
     QUICK_EXTRACT_MAX_CHARS: int = 120_000
     QUICK_PDF_MAX_PAGES: int = 20
     QUICK_XLSX_MAX_ROWS: int = 200
+    # Optional safety cap on vector chunks per file (0 = no limit).
+    MAX_INDEX_CHUNKS: int = 0
+    # Target size when merging spreadsheet/CSV rows into one RAG chunk (~512 tokens).
+    TABULAR_CHUNK_TARGET_CHARS: int = 4_000
     # PDFs under this size try pypdf text first (seconds). Docling only if text is empty.
     FAST_PDF_MAX_BYTES: int = 50 * 1024 * 1024
     FAST_PDF_MIN_TEXT_CHARS: int = 80
     FAST_INDEX_MAX_CHARS: int = 800_000
     FAST_DOCX_MAX_BYTES: int = 15 * 1024 * 1024
-    # Embedding upsert batch size (raise on machines with more RAM; default tuned for Docker).
-    EMBED_BATCH_SIZE: int = 32
+    # Chunks yielded per ingest step before embed (lower = less RAM during tabular ingest).
+    CHUNK_YIELD_BATCH_SIZE: int = 32
+    # Embedding upsert batch size (raise on machines with more RAM; default tuned for Docker 6GiB).
+    EMBED_BATCH_SIZE: int = 8
+    # Load FastEmbed at API startup so ingest does not spike parse + model download together.
+    PRELOAD_EMBED_MODEL: bool = True
     # Worker loop poll interval when queue is empty (seconds).
     WORKER_POLL_SECONDS: float = 2.0
     # Master spawns ingest worker threads in-process (uploads_data indexing).

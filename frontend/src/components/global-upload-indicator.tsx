@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useUploadQueueStore } from "@/stores/upload-queue-store";
+import { UploadTransferProgress } from "@/components/upload-transfer-progress";
 import { cn } from "@/lib/utils";
 
 /** Fixed banner — uploads keep running when navigating between pages. */
@@ -23,26 +24,35 @@ export function GlobalUploadIndicator() {
       ? current.sessionId
         ? `Preparing ${current.file.name} for chat…`
         : `Indexing ${current.file.name}…`
-      : current.status === "uploading"
-        ? `Uploading ${current.file.name} (${current.progress}%)`
-        : `Queued: ${current.file.name}`;
+      : current.status === "pending"
+        ? `Queued: ${current.file.name}`
+        : null;
 
   return (
     <div
       className={cn(
         "fixed bottom-4 left-1/2 z-50 -translate-x-1/2",
-        "flex max-w-md items-center gap-2 rounded-full border bg-card px-4 py-2 shadow-lg",
+        "w-[min(24rem,calc(100vw-2rem))] rounded-2xl border bg-card px-4 py-3 shadow-lg",
         "text-xs text-foreground",
       )}
       role="status"
       aria-live="polite"
     >
-      <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
-      <span className="truncate">{label}</span>
+      {current.status === "uploading" ? (
+        <div className="flex items-start gap-2">
+          <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin text-primary" />
+          <UploadTransferProgress item={current} compact className="flex-1" />
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+          <span className="truncate">{label}</span>
+        </div>
+      )}
       {active.length > 1 ? (
-        <span className="shrink-0 text-muted-foreground">
+        <p className="mt-1.5 pl-5 text-muted-foreground">
           +{active.length - 1} more
-        </span>
+        </p>
       ) : null}
     </div>
   );

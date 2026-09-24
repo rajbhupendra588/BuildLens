@@ -4,6 +4,8 @@ import { MessageSquareText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const SUGGESTED_QUERIES = [
+  "/summarize",
+  "/search",
   "/report",
   "What is the foundation depth for Tower B?",
   "Which concrete grade is specified for the columns?",

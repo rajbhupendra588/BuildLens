@@ -18,7 +18,8 @@ from app.services.ingest_pipeline import run_full_index_job
 from app.services.quick_extract_service import quiet_pdf_parser_logs
 
 
-def process_one_job(session: Session, job: IngestJob, worker_id: str) -> None:
+def process_one_job(job: IngestJob, worker_id: str) -> None:
+    job_id = job.id
     had_quick = job.session_id is not None and bool(
         (job.result or {}).get("chat_ready")
     )
@@ -30,15 +31,17 @@ def process_one_job(session: Session, job: IngestJob, worker_id: str) -> None:
             session_id=job.session_id,
             had_quick_ready=bool(had_quick),
         )
-        mark_success(session, job.id, {**result, "job_id": str(job.id)})
+        with Session(engine) as session:
+            mark_success(session, job_id, {**result, "job_id": str(job_id)})
     except Exception as exc:
-        mark_error(
-            session,
-            job.id,
-            status="error",
-            detail=str(exc),
-            preserve_result=bool(job.session_id and had_quick),
-        )
+        with Session(engine) as session:
+            mark_error(
+                session,
+                job_id,
+                status="error",
+                detail=str(exc),
+                preserve_result=bool(job.session_id and had_quick),
+            )
 
 
 def run_loop(worker_id: str, poll_seconds: float | None = None) -> None:
@@ -46,15 +49,18 @@ def run_loop(worker_id: str, poll_seconds: float | None = None) -> None:
     print(f"[ingest-worker] started id={worker_id} poll={poll}s")
 
     while True:
+        job = None
         with Session(engine) as session:
             job = claim_next_job(session, worker_id)
             if job:
-                print(
-                    f"[ingest-worker] claimed job={job.id} doc={job.document_id!r} "
-                    f"file={job.file_name!r}"
-                )
-                process_one_job(session, job, worker_id)
-                continue
+                session.expunge(job)
+        if job:
+            print(
+                f"[ingest-worker] claimed job={job.id} doc={job.document_id!r} "
+                f"file={job.file_name!r}"
+            )
+            process_one_job(job, worker_id)
+            continue
         time.sleep(poll)
 
 

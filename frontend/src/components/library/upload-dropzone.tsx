@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileIcon } from "@/components/library/file-icon";
+import { UploadTransferProgress } from "@/components/upload-transfer-progress";
 import {
   DOCUMENT_ACCEPT,
   MAX_LIBRARY_FILES,
@@ -160,61 +161,56 @@ export function UploadDropzone({
           </div>
           <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
             {uploadQueue.map((item) => (
-              <div key={item.id} className="flex items-center gap-3">
-                <FileIcon name={item.file.name} className="shrink-0" />
-                <span
-                  className="text-sm truncate min-w-0 flex-1"
-                  title={item.file.name}
-                >
-                  {item.file.name}
-                </span>
-                <div className="flex items-center gap-2 shrink-0 min-w-[9rem] max-w-[11rem] justify-end">
-                  {item.status === "uploading" && (
-                    <>
-                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full transition-all duration-150"
-                          style={{ width: `${item.progress}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-blue-500 w-20 text-right">
-                        {item.progress}% uploading
-                      </span>
-                    </>
-                  )}
-                  {item.status === "processing" && (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin text-amber-500 shrink-0" />
-                      <IndexingStatus
-                        fileName={item.file.name}
-                        startedAt={item.processingStartedAt}
-                      />
-                    </>
-                  )}
-                  {item.status === "done" && (
-                    <>
-                      <Check className="size-3.5 text-green-500 shrink-0" />
-                      <span className="text-xs text-green-500">Done</span>
-                    </>
-                  )}
-                  {item.status === "error" && (
-                    <>
-                      <X className="size-3.5 text-destructive shrink-0" />
+              <div key={item.id} className="flex items-start gap-3">
+                <FileIcon name={item.file.name} className="mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  {item.status === "uploading" ? (
+                    <UploadTransferProgress item={item} compact />
+                  ) : (
+                    <div className="flex items-center gap-2">
                       <span
-                        className="text-xs text-destructive truncate max-w-[100px]"
-                        title={item.error}
+                        className="text-sm truncate min-w-0 flex-1"
+                        title={item.file.name}
                       >
-                        {item.error ?? "Error"}
+                        {item.file.name}
                       </span>
-                    </>
-                  )}
-                  {item.status === "pending" && (
-                    <>
-                      <div className="size-2 rounded-full bg-muted-foreground/40 shrink-0" />
-                      <span className="text-xs text-muted-foreground">
-                        Pending
-                      </span>
-                    </>
+                      <div className="flex items-center gap-2 shrink-0 justify-end">
+                        {item.status === "processing" && (
+                          <>
+                            <Loader2 className="size-3.5 animate-spin text-amber-500 shrink-0" />
+                            <IndexingStatus
+                              fileName={item.file.name}
+                              startedAt={item.processingStartedAt}
+                            />
+                          </>
+                        )}
+                        {item.status === "done" && (
+                          <>
+                            <Check className="size-3.5 text-green-500 shrink-0" />
+                            <span className="text-xs text-green-500">Done</span>
+                          </>
+                        )}
+                        {item.status === "error" && (
+                          <>
+                            <X className="size-3.5 text-destructive shrink-0" />
+                            <span
+                              className="text-xs text-destructive truncate max-w-[100px]"
+                              title={item.error}
+                            >
+                              {item.error ?? "Error"}
+                            </span>
+                          </>
+                        )}
+                        {item.status === "pending" && (
+                          <>
+                            <div className="size-2 rounded-full bg-muted-foreground/40 shrink-0" />
+                            <span className="text-xs text-muted-foreground">
+                              Pending
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

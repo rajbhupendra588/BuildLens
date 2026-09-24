@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, isTransientNetworkError } from "@/lib/api";
-import { uploadAndIndexDocument } from "@/lib/document-upload";
+import {
+  uploadAndIndexDocument,
+  isLargeBackgroundUpload,
+} from "@/lib/document-upload";
+import {
+  notifyBackgroundUploadStarted,
+  prepareUploadNotifications,
+} from "@/lib/upload-notifications";
 import { collectFilesFromDataTransfer } from "@/lib/collect-dropped-files";
 import { DOCUMENTS_CHANGED_EVENT, notifyDocumentsChanged } from "@/lib/document-library-events";
 import {
@@ -67,6 +74,15 @@ export function useDocumentLibrary() {
     return () => window.removeEventListener(DOCUMENTS_CHANGED_EVENT, onChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const hasIndexing = docs.some((d) => d.index_status === "indexing");
+    if (!hasIndexing) return;
+    const timer = window.setInterval(() => {
+      void fetchDocs({ silent: true });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [docs]);
 
   const enqueueLibraryFiles = (files: File[]) => {
     if (files.length === 0) return;
@@ -162,10 +178,17 @@ export function useDocumentLibrary() {
     setIsRestoring(true);
     try {
       await apiRequest(`/documents/${doc.document_id}`, { method: "DELETE" });
-      await uploadAndIndexDocument(file, { waitForFullIndex: true });
+      const large = isLargeBackgroundUpload(file);
+      if (large) prepareUploadNotifications();
+      await uploadAndIndexDocument(file, { waitForFullIndex: !large });
       await fetchDocs();
       notifyDocumentsChanged();
-      toast.success(`${file.name} is stored and ready for preview.`);
+      if (large) {
+        notifyBackgroundUploadStarted(file.name, file.size);
+        toast.message("Restore uploaded — we'll notify you when indexing finishes.");
+      } else {
+        toast.success(`${file.name} is stored and ready for preview.`);
+      }
       return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Restore failed";

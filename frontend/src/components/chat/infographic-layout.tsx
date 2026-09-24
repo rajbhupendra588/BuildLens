@@ -751,7 +751,7 @@ function InfographicCanvas({
             }}
           />
         </div>
-        <div className="relative space-y-2 pr-16">
+        <div className="relative space-y-2 pr-10">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-foreground/80">
             {kindLabel}
           </p>

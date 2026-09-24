@@ -139,9 +139,10 @@ Excerpts:
 {excerpts}
 """
 
-SYNTH_SYSTEM = """You write a concise professional executive summary from EXTRACTED FACTS only.
+SYNTH_SYSTEM = """You are a senior report writer for executive audiences. Synthesize EXTRACTED FACTS only into polished, publication-quality prose.
 Do not add any fact, date, name, number, or risk that is not in the JSON.
-If information is missing, say it is not specified in the uploaded document.
+If information is missing, state it is not specified in the uploaded document—never pad with generic filler.
+Use confident, precise business English. No throat-clearing or meta commentary.
 Return JSON only:
 {"executive_summary":"1-2 short paragraphs","purpose":"1-2 paragraphs","top_findings":["..."],"observations":["BuildLens observations only — clearly interpretive, not document claims"],"document_actions":["actions stated in the document"]}
 """

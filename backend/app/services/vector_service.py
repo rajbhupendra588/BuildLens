@@ -1,10 +1,19 @@
+import gc
 import os
+import threading
 from pathlib import Path
 
 from app.core.config import settings
 from typing import Any, Dict, List
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
 
 # Persist across restarts (Docker volume). Default /tmp re-downloads ~520MB each time.
 FASTEMBED_CACHE_DIR = Path(
@@ -13,6 +22,9 @@ FASTEMBED_CACHE_DIR = Path(
 
 # FastEmbed reports these sizes; keep a table so an empty Qdrant can be
 # initialized without downloading the embedding model at API startup.
+# UI polls /documents (full Qdrant scroll) while ingest embeds; serialize to avoid OOM spikes.
+vector_db_heavy_lock = threading.Lock()
+
 _KNOWN_EMBED_SIZES: dict[str, int] = {
     "nomic-ai/nomic-embed-text-v1.5": 768,
     "sentence-transformers/all-MiniLM-L6-v2": 384,
@@ -37,6 +49,7 @@ def is_missing_collection_error(exc: BaseException) -> bool:
 
 class VectorService:
     _model = None
+    _model_lock = threading.Lock()
 
     def __init__(self):
         self.client = QdrantClient(host=settings.QDRANT.HOST, port=settings.QDRANT.PORT)
@@ -51,20 +64,22 @@ class VectorService:
     @property
     def model(self):
         if VectorService._model is None:
-            from fastembed import TextEmbedding
+            with VectorService._model_lock:
+                if VectorService._model is None:
+                    from fastembed import TextEmbedding
 
-            FASTEMBED_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            print(
-                f"[embed] loading {settings.EMBED_MODEL} "
-                f"(cache={FASTEMBED_CACHE_DIR})"
-            )
-            VectorService._model = TextEmbedding(
-                model_name=settings.EMBED_MODEL,
-                cache_dir=str(FASTEMBED_CACHE_DIR),
-                threads=1,
-                lazy_load=True,
-            )
-            self._warn_if_size_mismatch()
+                    FASTEMBED_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    print(
+                        f"[embed] loading {settings.EMBED_MODEL} "
+                        f"(cache={FASTEMBED_CACHE_DIR})"
+                    )
+                    VectorService._model = TextEmbedding(
+                        model_name=settings.EMBED_MODEL,
+                        cache_dir=str(FASTEMBED_CACHE_DIR),
+                        threads=1,
+                        lazy_load=True,
+                    )
+                    self._warn_if_size_mismatch()
         return VectorService._model
 
     def _vector_size(self) -> int:
@@ -116,6 +131,21 @@ class VectorService:
                 f"{'='*60}\n"
             )
 
+    @staticmethod
+    def _effective_embed_batch_size(texts: list[str], configured: int) -> int:
+        """Nomic ONNX spikes RAM on long texts; shrink batches for tabular-sized chunks."""
+        if not texts:
+            return 1
+        max_len = max(len(t) for t in texts)
+        cap = configured
+        if max_len > 3500:
+            cap = min(cap, 1)
+        elif max_len > 2000:
+            cap = min(cap, 2)
+        elif max_len > 1200:
+            cap = min(cap, 4)
+        return max(1, min(cap, 64))
+
     def upsert_chunks(
         self,
         chunks: List[Dict[str, Any]],
@@ -127,28 +157,62 @@ class VectorService:
             batch_size = settings.INGEST.EMBED_BATCH_SIZE
         batch_size = max(1, min(batch_size, 64))
         total = len(chunks)
-        for start in range(0, len(chunks), batch_size):
-            done = min(start + batch_size, total)
-            if start == 0 or done == total or done % 80 == 0:
-                print(f"[ingest] embedding {done}/{total} chunks")
-            batch = chunks[start : start + batch_size]
-            texts = [c["content"] for c in batch]
-            embeddings = list(self.model.embed(texts))
+        start = 0
+        with vector_db_heavy_lock:
+            while start < total:
+                slice_end = min(start + batch_size, total)
+                probe = [chunks[i]["content"] for i in range(start, slice_end)]
+                step = self._effective_embed_batch_size(probe, batch_size)
+                end = min(start + step, total)
+                if end == total or end <= 5 or end % 10 == 0:
+                    print(f"[ingest] embedding {end}/{total} chunks")
+                batch = chunks[start:end]
+                texts = [c["content"] for c in batch]
+                embeddings = list(self.model.embed(texts))
+                start = end
 
-            points = [
-                PointStruct(
-                    id=chunk["id"],
-                    vector=embeddings[i].tolist(),
-                    payload={
-                        "content": chunk["content"],
-                        "metadata": chunk["metadata"],
-                    },
-                )
-                for i, chunk in enumerate(batch)
-            ]
+                points = [
+                    PointStruct(
+                        id=chunk["id"],
+                        vector=embeddings[i].tolist(),
+                        payload={
+                            "content": chunk["content"],
+                            "metadata": chunk["metadata"],
+                        },
+                    )
+                    for i, chunk in enumerate(batch)
+                ]
 
-            self.client.upsert(collection_name=self.collection_name, points=points)
+                self.client.upsert(collection_name=self.collection_name, points=points)
+                del texts, embeddings, points, batch
+                gc.collect()
         return True
+
+
+    def count_chunks_for_document(self, document_id: str) -> int:
+        """Exact chunk count for one document. Does not take the heavy ingest lock."""
+        try:
+            self.ensure_collection()
+            if not self.collection_exists():
+                return 0
+            return int(
+                self.client.count(
+                    collection_name=self.collection_name,
+                    count_filter=Filter(
+                        must=[
+                            FieldCondition(
+                                key="metadata.document_id",
+                                match=MatchValue(value=document_id),
+                            )
+                        ]
+                    ),
+                    exact=True,
+                ).count
+            )
+        except Exception as exc:
+            if is_missing_collection_error(exc):
+                return 0
+            raise
 
     def get_stats(self) -> dict:
         """Return total chunks and unique document count."""
@@ -166,26 +230,27 @@ class VectorService:
         # Use scroll with offset pagination to avoid loading all points into memory
         doc_ids: set[str] = set()
         offset = None
-        while True:
-            try:
-                results, next_offset = self.client.scroll(
-                    collection_name=self.collection_name,
-                    limit=1000,
-                    offset=offset,
-                    with_payload=["metadata.document_id"],
-                    with_vectors=False,
-                )
-            except Exception as exc:
-                if is_missing_collection_error(exc):
-                    return {"total_chunks": total_chunks, "total_files": len(doc_ids)}
-                raise
-            for point in results:
-                doc_id = (point.payload.get("metadata") or {}).get("document_id")
-                if doc_id:
-                    doc_ids.add(doc_id)
-            if next_offset is None:
-                break
-            offset = next_offset
+        with vector_db_heavy_lock:
+            while True:
+                try:
+                    results, next_offset = self.client.scroll(
+                        collection_name=self.collection_name,
+                        limit=1000,
+                        offset=offset,
+                        with_payload=["metadata.document_id"],
+                        with_vectors=False,
+                    )
+                except Exception as exc:
+                    if is_missing_collection_error(exc):
+                        return {"total_chunks": total_chunks, "total_files": len(doc_ids)}
+                    raise
+                for point in results:
+                    doc_id = (point.payload.get("metadata") or {}).get("document_id")
+                    if doc_id:
+                        doc_ids.add(doc_id)
+                if next_offset is None:
+                    break
+                offset = next_offset
 
         return {"total_chunks": total_chunks, "total_files": len(doc_ids)}
 
@@ -194,6 +259,11 @@ class VectorService:
         if self.collection_exists():
             self.client.delete_collection(self.collection_name)
         self.ensure_collection()
+
+
+def preload_embedding_model() -> None:
+    """Warm FastEmbed ONNX weights (safe to call from a background thread at startup)."""
+    _ = vector_service.model
 
 
 vector_service = VectorService()

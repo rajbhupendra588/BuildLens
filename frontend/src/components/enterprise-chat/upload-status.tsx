@@ -6,8 +6,7 @@ import { useActiveChatSessionId } from "@/lib/active-chat-session";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "Uploading",
-  uploading: "Uploading",
+  pending: "Queued",
   processing: "Processing",
   extracting: "Extracting",
   indexing: "Indexing",
@@ -25,7 +24,9 @@ export function UploadStatus({ className }: UploadStatusProps) {
     (item) =>
       (!sessionId || item.sessionId === sessionId) &&
       item.status !== "done" &&
-      item.status !== "error",
+      item.status !== "error" &&
+      item.status !== "uploading" &&
+      item.status !== "pending",
   );
 
   const ready = queue.find(

@@ -11,6 +11,11 @@ from typing import Optional, Tuple
 
 from app.services.intent_service import IntentMode
 
+_EXCELLENCE_USER_DIRECTIVE = (
+    " Deliver a complete, executive-grade response using the required structure. "
+    "No empty sections, no informal labels, no meta commentary about commands or tools."
+)
+
 SlashSpec = Tuple[
     re.Pattern[str],
     IntentMode,
@@ -39,14 +44,43 @@ _REPORT = re.compile(
     r"^\s*/report(?:@\w+)?\s*(.*)$",
     re.I | re.DOTALL,
 )
+_RISKREGISTER = re.compile(
+    r"^\s*/riskregister(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
+_ACTIONPLAN = re.compile(
+    r"^\s*/actionplan(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
+_TIMELINE = re.compile(
+    r"^\s*/timeline(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
+_FAQ = re.compile(
+    r"^\s*/faq(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
+_CONFLICTS = re.compile(
+    r"^\s*/conflicts(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
+_SUMMARIZE = re.compile(
+    r"^\s*/summarize(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
+_SEARCH = re.compile(
+    r"^\s*/search(?:@\w+)?\s*(.*)$",
+    re.I | re.DOTALL,
+)
 
 _BRIEFINGDOC_RETRIEVAL_FALLBACK = (
     "executive summary key findings critical details themes deadlines "
     "action items next steps obligations risks recommendations timeline"
 )
 _BRIEFINGDOC_LLM_FALLBACK = (
-    "Convert my active sources into a structured Briefing Document. "
-    "Use only files attached to this conversation and the retrieved document context."
+    "Produce a leadership-ready Briefing Document from my sources with every required section "
+    "fully populated and strictly grounded in retrieved context."
+    + _EXCELLENCE_USER_DIRECTIVE
 )
 
 _STUDYGUIDE_RETRIEVAL_FALLBACK = (
@@ -54,8 +88,9 @@ _STUDYGUIDE_RETRIEVAL_FALLBACK = (
     "learning objectives summary principles examples practice quiz"
 )
 _STUDYGUIDE_LLM_FALLBACK = (
-    "Analyze my active sources and generate a comprehensive Study Guide. "
-    "Use only files attached to this conversation and the retrieved document context."
+    "Produce a comprehensive, student-ready Study Guide from my sources with outline, "
+    "glossary, quiz, and answer key—all grounded in retrieved context."
+    + _EXCELLENCE_USER_DIRECTIVE
 )
 
 _INFOGRAPHIC_RETRIEVAL_FALLBACK = (
@@ -63,9 +98,9 @@ _INFOGRAPHIC_RETRIEVAL_FALLBACK = (
     "summary highlights core concepts outcomes trends comparison milestones"
 )
 _INFOGRAPHIC_LLM_FALLBACK = (
-    "Synthesize my active sources into a detailed Gemini-style infographic: "
-    "narrative overview, KPIs, charts where numbers exist, process/timeline, and takeaways. "
-    "Use only files attached to this conversation and the retrieved document context."
+    "Synthesize my sources into a rich, grounded visual infographic JSON: narrative depth, "
+    "KPIs, charts where numbers exist, process or timeline, and actionable takeaways."
+    + _EXCELLENCE_USER_DIRECTIVE
 )
 
 _DASHBOARD_RETRIEVAL_FALLBACK = (
@@ -73,10 +108,80 @@ _DASHBOARD_RETRIEVAL_FALLBACK = (
     "kpis trends distribution breakdown ranking outcomes milestones table data dashboard"
 )
 _DASHBOARD_LLM_FALLBACK = (
-    "Build a production-grade executive dashboard from my active sources as a single "
-    "infographic JSON document with kind dashboard: KPI strip, multiple charts, evidence "
-    "table, timeline, risk/opportunity highlights, and actionable takeaways. Ground "
-    "every figure in retrieved document text. Do not output OCR/indexing diagnostics."
+    "Build a production-grade executive dashboard as one infographic JSON document "
+    "(kind dashboard): KPIs, multiple grounded charts, evidence table, timeline, "
+    "risk/opportunity highlights, and decision-ready takeaways."
+    + _EXCELLENCE_USER_DIRECTIVE
+)
+
+_RISKREGISTER_RETRIEVAL_FALLBACK = (
+    "risk hazard safety compliance liability penalty warranty indemnity exposure "
+    "mitigation control requirement obligation deadline breach violation contingency"
+)
+_RISKREGISTER_LLM_FALLBACK = (
+    "Build a source-grounded Risk Register with overview, risk table, mitigations, "
+    "and monitoring items—every row tied to document evidence."
+    + _EXCELLENCE_USER_DIRECTIVE
+)
+
+_ACTIONPLAN_RETRIEVAL_FALLBACK = (
+    "action item task deliverable milestone owner responsible deadline due date "
+    "next step requirement shall must submit approve complete implement schedule"
+)
+_ACTIONPLAN_LLM_FALLBACK = (
+    "Produce a prioritised, executable Action Plan with objective, numbered actions, "
+    "decisions required, and quick wins—each item traceable to the sources."
+    + _EXCELLENCE_USER_DIRECTIVE
+)
+
+_TIMELINE_RETRIEVAL_FALLBACK = (
+    "date deadline milestone schedule phase completion start finish duration "
+    "timeline calendar week month year sequence prior before after dependency"
+)
+_TIMELINE_LLM_FALLBACK = (
+    "Extract a defensible Project Timeline with summary, chronology table, dependencies, "
+    "and documented gaps—no invented dates."
+    + _EXCELLENCE_USER_DIRECTIVE
+)
+
+_FAQ_RETRIEVAL_FALLBACK = (
+    "question answer requirement specification scope responsibility who what when "
+    "how why policy procedure definition exception exclusion limitation"
+)
+_FAQ_LLM_FALLBACK = (
+    "Generate a polished stakeholder FAQ with audience scope, 8–14 grounded Q&A pairs, "
+    "edge cases, and an honest 'still unanswered' section."
+    + _EXCELLENCE_USER_DIRECTIVE
+)
+
+_CONFLICTS_RETRIEVAL_FALLBACK = (
+    "conflict contradiction inconsistent discrepancy differ versus except unless "
+    "revision amendment change order alternate specification requirement mismatch gap"
+)
+_CONFLICTS_LLM_FALLBACK = (
+    "Compare my sources and deliver a Conflict Finder report: scope, findings with both "
+    "sides quoted, missing information, and RFI-style clarifications."
+    + _EXCELLENCE_USER_DIRECTIVE
+)
+
+_SUMMARIZE_RETRIEVAL_FALLBACK = (
+    "summary overview key points main themes conclusions takeaways executive "
+    "highlights scope purpose background findings recommendations"
+)
+_SUMMARIZE_LLM_FALLBACK = (
+    "Summarize my sources using Executive Summary, Key Points, Supporting Detail, "
+    "and Next Steps—complete sections only, no empty headings."
+    + _EXCELLENCE_USER_DIRECTIVE
+)
+
+_SEARCH_RETRIEVAL_FALLBACK = (
+    "relevant sections passages requirements specifications details figures "
+    "mentions references evidence excerpts clauses terms definitions"
+)
+_SEARCH_LLM_FALLBACK = (
+    "Search my sources and return ranked excerpts with citations using Query Focus, "
+    "Top Excerpts, and Coverage Note—prioritise verbatim evidence."
+    + _EXCELLENCE_USER_DIRECTIVE
 )
 
 _SLASH_COMMANDS: Tuple[SlashSpec, ...] = (
@@ -113,7 +218,58 @@ _SLASH_COMMANDS: Tuple[SlashSpec, ...] = (
         IntentMode.DOCUMENT_REPORT,
         "report",
         "full document analysis key findings requirements risks gaps conflicts metrics milestones",
-        "Analyze the complete uploaded document set and generate a structured professional report.",
+        "Analyze the complete uploaded document set and produce a structured, executive-grade "
+        "professional report with fully grounded findings."
+        + _EXCELLENCE_USER_DIRECTIVE,
+    ),
+    (
+        _RISKREGISTER,
+        IntentMode.RISK_REGISTER,
+        "riskregister",
+        _RISKREGISTER_RETRIEVAL_FALLBACK,
+        _RISKREGISTER_LLM_FALLBACK,
+    ),
+    (
+        _ACTIONPLAN,
+        IntentMode.ACTION_PLAN,
+        "actionplan",
+        _ACTIONPLAN_RETRIEVAL_FALLBACK,
+        _ACTIONPLAN_LLM_FALLBACK,
+    ),
+    (
+        _TIMELINE,
+        IntentMode.TIMELINE,
+        "timeline",
+        _TIMELINE_RETRIEVAL_FALLBACK,
+        _TIMELINE_LLM_FALLBACK,
+    ),
+    (
+        _FAQ,
+        IntentMode.FAQ,
+        "faq",
+        _FAQ_RETRIEVAL_FALLBACK,
+        _FAQ_LLM_FALLBACK,
+    ),
+    (
+        _CONFLICTS,
+        IntentMode.CONFLICT_FINDER,
+        "conflicts",
+        _CONFLICTS_RETRIEVAL_FALLBACK,
+        _CONFLICTS_LLM_FALLBACK,
+    ),
+    (
+        _SUMMARIZE,
+        IntentMode.SUMMARIZER,
+        "summarize",
+        _SUMMARIZE_RETRIEVAL_FALLBACK,
+        _SUMMARIZE_LLM_FALLBACK,
+    ),
+    (
+        _SEARCH,
+        IntentMode.SEARCH,
+        "search",
+        _SEARCH_RETRIEVAL_FALLBACK,
+        _SEARCH_LLM_FALLBACK,
     ),
 )
 

@@ -3,7 +3,7 @@ import json
 import re
 import uuid
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Iterator, List
 
 import pandas as pd
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
@@ -142,6 +142,190 @@ class ChunkingService:
 
     # ── Format-specific text extractors ──────────────────────────────────────
 
+    def _tabular_row_line(self, row: Any) -> str | None:
+        parts = [f"{col}: {val}" for col, val in row.items() if str(val) != ""]
+        if not parts:
+            return None
+        return ", ".join(parts)
+
+    def _tabular_values_line(self, columns: list[str], values: tuple[Any, ...]) -> str | None:
+        parts: list[str] = []
+        for col, val in zip(columns, values):
+            if val is None:
+                continue
+            text = str(val).strip()
+            if not text:
+                continue
+            parts.append(f"{col}: {text}")
+        if not parts:
+            return None
+        return ", ".join(parts)
+
+    def _iter_xlsx_openpyxl_batches(
+        self,
+        path: Path,
+        *,
+        target: int,
+        batch_size: int,
+        file_name: str,
+        document_id: str,
+        owner_meta: dict | None,
+    ) -> Iterator[list[dict]]:
+        from openpyxl import load_workbook
+
+        chunk_index = 0
+        pending: list[dict] = []
+
+        def emit(content: str, sheet_name: str) -> Iterator[list[dict]]:
+            nonlocal chunk_index, pending
+            meta = {"format": "tabular", "sheet": sheet_name}
+            chunk = self._make_chunk(
+                content, file_name, document_id, chunk_index, meta
+            )
+            if owner_meta:
+                chunk["metadata"].update(owner_meta)
+            pending.append(chunk)
+            chunk_index += 1
+            while len(pending) >= batch_size:
+                yield pending[:batch_size]
+                pending = pending[batch_size:]
+
+        wb = load_workbook(path, read_only=True, data_only=True)
+        try:
+            for ws in wb.worksheets:
+                sheet_name = ws.title
+                rows = ws.iter_rows(values_only=True)
+                header_row = next(rows, None)
+                if not header_row:
+                    continue
+                columns = [
+                    str(h).strip() if h is not None and str(h).strip() else f"column_{i}"
+                    for i, h in enumerate(header_row)
+                ]
+                block_lines: list[str] = []
+                block_chars = 0
+                header = f"[Sheet: {sheet_name}]"
+
+                for row in rows:
+                    if not row:
+                        continue
+                    line = self._tabular_values_line(columns, row)
+                    if not line:
+                        continue
+                    extra = len(line) + 1
+                    if block_lines and block_chars + extra > target:
+                        content = header + "\n" + "\n".join(block_lines)
+                        yield from emit(content, sheet_name)
+                        block_lines = []
+                        block_chars = 0
+                    block_lines.append(line)
+                    block_chars += extra
+
+                if block_lines:
+                    content = header + "\n" + "\n".join(block_lines)
+                    yield from emit(content, sheet_name)
+        finally:
+            wb.close()
+
+        if pending:
+            yield pending
+
+    def iter_tabular_index_batches(
+        self,
+        source: Path | bytes,
+        file_name: str,
+        document_id: str,
+        file_type: str,
+        owner_user_id: str | None = None,
+        *,
+        batch_size: int | None = None,
+    ) -> Iterator[list[dict]]:
+        """
+        Stream CSV/XLSX rows into merged text chunks (many rows per chunk).
+        Reads from disk Path when possible (avoids duplicating upload bytes in RAM).
+        XLSX is processed one sheet at a time to limit peak memory.
+        """
+        if batch_size is None:
+            batch_size = settings.INGEST.CHUNK_YIELD_BATCH_SIZE
+        batch_size = max(1, min(batch_size, 128))
+
+        target = max(800, settings.INGEST.TABULAR_CHUNK_TARGET_CHARS)
+        owner_meta = {"user_id": owner_user_id} if owner_user_id else None
+        chunk_index = 0
+        pending: list[dict] = []
+
+        def emit(content: str, sheet_name: str) -> Iterator[list[dict]]:
+            nonlocal chunk_index, pending
+            meta = {"format": "tabular", "sheet": sheet_name}
+            chunk = self._make_chunk(
+                content, file_name, document_id, chunk_index, meta
+            )
+            if owner_meta:
+                chunk["metadata"].update(owner_meta)
+            pending.append(chunk)
+            chunk_index += 1
+            while len(pending) >= batch_size:
+                yield pending[:batch_size]
+                pending = pending[batch_size:]
+
+        def process_sheet(sheet_name: str, df: pd.DataFrame) -> Iterator[list[dict]]:
+            block_lines: list[str] = []
+            block_chars = 0
+            header = f"[Sheet: {sheet_name}]"
+
+            for _, row in df.iterrows():
+                line = self._tabular_row_line(row)
+                if not line:
+                    continue
+                extra = len(line) + 1
+                if block_lines and block_chars + extra > target:
+                    content = header + "\n" + "\n".join(block_lines)
+                    yield from emit(content, sheet_name)
+                    block_lines = []
+                    block_chars = 0
+                block_lines.append(line)
+                block_chars += extra
+
+            if block_lines:
+                content = header + "\n" + "\n".join(block_lines)
+                yield from emit(content, sheet_name)
+
+        try:
+            if file_type == "csv":
+                if isinstance(source, Path):
+                    df = pd.read_csv(source).fillna("")
+                else:
+                    df = pd.read_csv(io.BytesIO(source)).fillna("")
+                yield from process_sheet("CSV", df)
+                del df
+            elif file_type == "xlsx":
+                if isinstance(source, Path):
+                    yield from self._iter_xlsx_openpyxl_batches(
+                        source,
+                        target=target,
+                        batch_size=batch_size,
+                        file_name=file_name,
+                        document_id=document_id,
+                        owner_meta=owner_meta,
+                    )
+                    return
+                excel = pd.ExcelFile(io.BytesIO(source))
+                try:
+                    for name in excel.sheet_names:
+                        df = pd.read_excel(excel, sheet_name=name).fillna("")
+                        yield from process_sheet(str(name), df)
+                        del df
+                finally:
+                    excel.close()
+            else:
+                return
+        except Exception as exc:
+            print(f"Tabular read error ({file_type}): {exc}")
+            return
+
+        if pending:
+            yield pending
+
     def process_csv(self, file_content: bytes) -> str:
         try:
             df = pd.read_csv(io.BytesIO(file_content)).fillna("")
@@ -255,6 +439,23 @@ class ChunkingService:
                 )
         return chunks
 
+    def _token_count(self, text: str) -> int:
+        tok = getattr(self.chunker, "tokenizer", None)
+        if tok is None:
+            return max(1, (len(text) + 3) // 4)
+        if hasattr(tok, "count_tokens"):
+            try:
+                return int(tok.count_tokens(text))
+            except Exception:
+                pass
+        inner = getattr(tok, "tokenizer", None)
+        if inner is not None and hasattr(inner, "count_tokens"):
+            try:
+                return int(inner.count_tokens(text))
+            except Exception:
+                pass
+        return max(1, (len(text) + 3) // 4)
+
     # ── Docling-document chunker ──────────────────────────────────────────────
 
     def _chunk_docling(self, doc, file_name: str, document_id: str) -> List[dict]:
@@ -272,7 +473,7 @@ class ChunkingService:
         result: List[dict] = []
         cursor = 0
         for i, (chunk, text) in enumerate(serialized):
-            token_count = self.chunker.tokenizer.count_tokens(text)
+            token_count = self._token_count(text)
             # HybridChunker can still emit oversize pieces; split so embed
             # and the MiniLM tokenizer stay within 512 tokens.
             if token_count > 512:
@@ -357,7 +558,12 @@ class ChunkingService:
             chunks = self._chunk_docling(input_data, file_name, document_id)
         elif file_type == "code" or ext in _EXT_LANGUAGE:
             chunks = self.chunk_source_code(str(input_data), file_name, document_id)
-        elif ext in {".md", ".txt"} or file_type == "text":
+        elif file_type in {"csv", "xlsx"} or ext in {".csv", ".xlsx"}:
+            # Tabular exports: size-based chunks (not heading-aware — avoids one chunk per row).
+            chunks = self._simple_split(str(input_data), file_name, document_id)
+        elif ext in {".md", ".txt"}:
+            chunks = self._chunk_headings(str(input_data), file_name, document_id)
+        elif file_type == "text":
             chunks = self._chunk_headings(str(input_data), file_name, document_id)
         else:
             chunks = self._simple_split(str(input_data), file_name, document_id)
@@ -366,6 +572,103 @@ class ChunkingService:
             for chunk in chunks:
                 chunk["metadata"].update(owner_meta)
         return chunks
+
+    def iter_split_batches(
+        self,
+        input_data: Any,
+        file_name: str,
+        document_id: str = "",
+        file_type: str = "text",
+        owner_user_id: str | None = None,
+        *,
+        batch_size: int | None = None,
+    ) -> Iterator[list[dict]]:
+        """
+        Yield chunk dicts in batches so ingest never materializes tens of thousands at once.
+        """
+        if batch_size is None:
+            batch_size = settings.INGEST.CHUNK_YIELD_BATCH_SIZE
+        batch_size = max(1, min(batch_size, 128))
+
+        text = str(input_data)
+        ext = Path(file_name).suffix.lower()
+        owner_meta = {"user_id": owner_user_id} if owner_user_id else None
+
+        if file_type in {"csv", "xlsx"} or ext in {".csv", ".xlsx"}:
+            splitter = "simple"
+        elif ext in {".md", ".txt"} or file_type == "text":
+            splitter = "headings"
+        elif file_type == "code" or ext in _EXT_LANGUAGE:
+            for batch in self._iter_code_batches(
+                text, file_name, document_id, owner_meta, batch_size=batch_size
+            ):
+                yield batch
+            return
+        elif file_type == "docling" or isinstance(input_data, (DoclingDocument, dict)):
+            all_chunks = self._chunk_docling(input_data, file_name, document_id)
+            for i in range(0, len(all_chunks), batch_size):
+                batch = all_chunks[i : i + batch_size]
+                if owner_meta:
+                    for chunk in batch:
+                        chunk["metadata"].update(owner_meta)
+                yield batch
+            return
+        else:
+            splitter = "simple"
+
+        if splitter == "headings":
+            all_chunks = self._chunk_headings(text, file_name, document_id)
+            for i in range(0, len(all_chunks), batch_size):
+                batch = all_chunks[i : i + batch_size]
+                if owner_meta:
+                    for chunk in batch:
+                        chunk["metadata"].update(owner_meta)
+                yield batch
+            return
+
+        batch: list[dict] = []
+        stride = self.CHUNK_SIZE - self.OVERLAP
+        index = 0
+        for i in range(0, len(text), stride):
+            piece = text[i : i + self.CHUNK_SIZE]
+            if not piece.strip():
+                continue
+            end_i = i + len(piece)
+            line_start, line_end = char_to_line_range(text, i, end_i)
+            loc_meta = {
+                "line_start": line_start,
+                "line_end": line_end,
+                "paragraph_index": char_to_paragraph_index(text, i),
+            }
+            chunk = self._make_chunk(
+                piece, file_name, document_id, index, loc_meta
+            )
+            if owner_meta:
+                chunk["metadata"].update(owner_meta)
+            batch.append(chunk)
+            index += 1
+            if len(batch) >= batch_size:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
+
+    def _iter_code_batches(
+        self,
+        text: str,
+        file_name: str,
+        document_id: str,
+        owner_meta: dict | None,
+        *,
+        batch_size: int,
+    ) -> Iterator[list[dict]]:
+        all_chunks = self.chunk_source_code(text, file_name, document_id)
+        for i in range(0, len(all_chunks), batch_size):
+            batch = all_chunks[i : i + batch_size]
+            if owner_meta:
+                for chunk in batch:
+                    chunk["metadata"].update(owner_meta)
+            yield batch
 
 
 def _extract_bbox(prov: object) -> dict[str, float] | None:

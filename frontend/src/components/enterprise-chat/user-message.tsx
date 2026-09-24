@@ -26,16 +26,21 @@ export function UserMessage({
 }: UserMessageProps) {
   return (
     <article
-      className={cn("group/msg w-full py-2.5 md:py-3", className)}
+      className={cn(
+        "chat-user group/msg flex w-full flex-col items-end py-4 md:py-5",
+        className,
+      )}
       aria-label="Your question"
     >
       {editing ?? (
-        <>
-          <p className="text-[15px] leading-[1.6] font-medium text-foreground whitespace-pre-wrap">
-            {content}
-          </p>
+        <div className="max-w-[min(100%,40rem)] text-right">
+          <div className="chat-user-bubble rounded-2xl rounded-br-md px-4 py-2.5 text-left">
+            <p className="text-[16px] leading-[1.55] font-medium tracking-[-0.01em] text-[var(--chat-user-text)] whitespace-pre-wrap">
+              {content}
+            </p>
+          </div>
           {(sourceLabels?.length || scopeLabel || reportScope) && (
-            <div className="mt-2 text-[12px] text-muted-foreground space-y-1">
+            <div className="mt-2 text-[12px] text-[var(--chat-muted)] space-y-1">
               {reportScope ? (
                 <p>
                   <span className="text-muted-foreground/80">Report Scope: </span>
@@ -56,10 +61,13 @@ export function UserMessage({
               ) : null}
             </div>
           )}
-        </>
+        </div>
       )}
       {(timestamp || actions) && (
-        <div className="mt-1.5 flex items-center gap-2">{timestamp}{actions}</div>
+        <div className="mt-1.5 flex items-center justify-end gap-2">
+          {timestamp}
+          {actions}
+        </div>
       )}
     </article>
   );

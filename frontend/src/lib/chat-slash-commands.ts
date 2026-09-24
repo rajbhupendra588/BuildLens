@@ -1,46 +1,135 @@
+export type ChatToolCategory = "quick" | "visual" | "analysis";
+
 export type ChatSlashCommand = {
   /** Command token without leading slash (e.g. briefingdoc) */
   name: string;
   label: string;
   description: string;
   icon: string;
+  category: ChatToolCategory;
 };
 
+export const CHAT_TOOL_CATEGORIES: {
+  id: ChatToolCategory;
+  label: string;
+}[] = [
+  { id: "quick", label: "Quick actions" },
+  { id: "visual", label: "Reports & visuals" },
+  { id: "analysis", label: "Analysis" },
+];
+
 export const CHAT_SLASH_COMMANDS: ChatSlashCommand[] = [
+  {
+    name: "summarize",
+    label: "Summarize",
+    description: "Leadership-ready summary with key points and next steps",
+    icon: "📋",
+    category: "quick",
+  },
+  {
+    name: "search",
+    label: "Deep Search",
+    description: "Evidence-ranked excerpts with citations and coverage notes",
+    icon: "🔍",
+    category: "quick",
+  },
+  {
+    name: "faq",
+    label: "Stakeholder FAQ",
+    description: "Executive-ready Q&A with citations and open questions",
+    icon: "❓",
+    category: "quick",
+  },
+  {
+    name: "briefingdoc",
+    label: "Briefing Document",
+    description: "Board-ready briefing: summary, findings, and actions",
+    icon: "📑",
+    category: "quick",
+  },
   {
     name: "report",
     label: "Document Report",
     description: "Full-document analysis: findings, risks, gaps, and a 5-page PDF",
     icon: "📄",
-  },
-  {
-    name: "briefingdoc",
-    label: "Briefing Document",
-    description: "Executive summary, findings, and next steps from your sources",
-    icon: "📑",
-  },
-  {
-    name: "studyguide",
-    label: "Study Guide",
-    description: "Outline, glossary, practice quiz, and answer key",
-    icon: "📚",
+    category: "visual",
   },
   {
     name: "infographic",
     label: "Infographic",
     description: "Detailed visual briefing with story, metrics, and takeaways",
     icon: "🎨",
+    category: "visual",
   },
   {
     name: "dashboard",
     label: "Visual Dashboard",
     description: "Professional charts: KPIs, pie, bars, table, and insights",
     icon: "📊",
+    category: "visual",
+  },
+  {
+    name: "studyguide",
+    label: "Study Guide",
+    description: "Outline, glossary, practice quiz, and answer key",
+    icon: "📚",
+    category: "visual",
+  },
+  {
+    name: "riskregister",
+    label: "Risk Register",
+    description: "Severity matrix, mitigations, and evidence-backed risks",
+    icon: "🛡️",
+    category: "analysis",
+  },
+  {
+    name: "actionplan",
+    label: "Action Plan",
+    description: "Prioritized tasks, owners, dependencies, and decisions",
+    icon: "✅",
+    category: "analysis",
+  },
+  {
+    name: "timeline",
+    label: "Project Timeline",
+    description: "Chronological milestones, dependencies, and schedule gaps",
+    icon: "📅",
+    category: "analysis",
+  },
+  {
+    name: "conflicts",
+    label: "Conflict Finder",
+    description: "Cross-document discrepancies and RFI-style clarifications",
+    icon: "⚖️",
+    category: "analysis",
   },
 ];
 
+const CATEGORY_ORDER: ChatToolCategory[] = ["quick", "visual", "analysis"];
+
+export function sortCommandsByCategory(
+  commands: ChatSlashCommand[],
+): ChatSlashCommand[] {
+  return [...commands].sort(
+    (a, b) =>
+      CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category),
+  );
+}
+
+export function commandsForCategory(
+  category: ChatToolCategory,
+): ChatSlashCommand[] {
+  return CHAT_SLASH_COMMANDS.filter((c) => c.category === category);
+}
+
 export function slashForCommand(name: string): string {
   return `/${name}`;
+}
+
+export function insertSlashCommand(name: string): string {
+  const cmd = CHAT_SLASH_COMMANDS.find((c) => c.name === name.toLowerCase());
+  if (cmd) return applySlashCommandSelection(cmd);
+  return `${slashForCommand(name)} `;
 }
 
 /** Parsed `/command` prefix at the start of the composer (before optional args). */
@@ -81,11 +170,13 @@ export function getSlashCommandFilter(value: string): string {
 }
 
 export function filterSlashCommands(filter: string): ChatSlashCommand[] {
-  if (!filter) return CHAT_SLASH_COMMANDS;
-  return CHAT_SLASH_COMMANDS.filter(
-    (cmd) =>
-      cmd.name.startsWith(filter) ||
-      cmd.label.toLowerCase().includes(filter),
+  if (!filter) return sortCommandsByCategory(CHAT_SLASH_COMMANDS);
+  return sortCommandsByCategory(
+    CHAT_SLASH_COMMANDS.filter(
+      (cmd) =>
+        cmd.name.startsWith(filter) ||
+        cmd.label.toLowerCase().includes(filter),
+    ),
   );
 }
 
