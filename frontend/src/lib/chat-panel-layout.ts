@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-const CHAT_RAIL_MAX = "max-w-[820px]";
+const CHAT_RAIL_MAX = "max-w-[984px]";
 
 /** Inner rail — use inside `chatPanelOuterClassName` wrapper. */
 export function chatPanelWidthClassName(className?: string) {

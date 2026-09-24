@@ -210,7 +210,7 @@ function MessageTimestamp({ iso, align }: { iso: string; align: "left" | "right"
       dateTime={iso}
       title={formatChatDateTime(iso)}
       className={cn(
-        "text-[11px] text-muted-foreground tabular-nums",
+        "text-[11px] font-chat-sans text-[var(--chat-muted)] tabular-nums",
         align === "right" && "text-right",
       )}
     >
@@ -256,7 +256,7 @@ export function ChatDayDivider({ iso }: { iso: string }) {
   return (
     <div className="flex items-center gap-3 py-3" role="separator">
       <div className="h-px flex-1 bg-border" />
-      <span className="shrink-0 rounded-full border bg-card px-3 py-0.5 text-[11px] font-medium text-muted-foreground">
+      <span className="shrink-0 rounded-full border bg-card px-3 py-0.5 font-chat-sans text-[11px] font-medium text-[var(--chat-muted)]">
         {label}
       </span>
       <div className="h-px flex-1 bg-border" />
@@ -285,7 +285,7 @@ function MarkdownHeading({
       target={{ kind: "section", title, type: Tag }}
       className="first:mt-0"
     >
-      <Tag className={cn(className, "pr-2")}>{children}</Tag>
+      <Tag className={cn(className, "pr-8")}>{children}</Tag>
     </EditableBlockFrame>
   );
 }
@@ -440,9 +440,9 @@ export function ChatMessageItem({
   // User message
   if (!isAi) {
     return (
-      <div className="group/msg w-full border-b border-border/30 last:border-b-0">
+      <div className="group/msg flex w-full justify-end">
         {isEditing ? (
-            <div className="w-full rounded-md border bg-[var(--enterprise-surface)] p-3">
+            <div className="chat-user-bubble w-full max-w-[min(100%,40rem)] rounded-2xl rounded-br-md p-3">
               <textarea
                 ref={editRef}
                 value={draft}
@@ -463,7 +463,7 @@ export function ChatMessageItem({
                   }
                 }}
                 rows={2}
-                className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none"
+                className="w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--chat-user-text)] outline-none placeholder:text-[var(--chat-user-text)]/55"
               />
               <div className="mt-2 flex justify-end gap-2">
                 <Button
@@ -472,6 +472,7 @@ export function ChatMessageItem({
                   size="sm"
                   onClick={cancelEdit}
                   disabled={isSaving}
+                  className="text-[var(--chat-user-text)] hover:bg-white/10 hover:text-[var(--chat-user-text)]"
                 >
                   Cancel
                 </Button>
@@ -480,6 +481,7 @@ export function ChatMessageItem({
                   size="sm"
                   onClick={() => void saveEdit()}
                   disabled={isSaving || !draft.trim()}
+                  className="bg-white text-[var(--chat-user-bg)] hover:bg-white/90"
                 >
                   Save & submit
                 </Button>
@@ -495,7 +497,7 @@ export function ChatMessageItem({
                   : undefined
               }
               timestamp={
-                <MessageTimestamp iso={message.created_at} align="left" />
+                <MessageTimestamp iso={message.created_at} align="right" />
               }
               actions={!isEditing ? actionBar : null}
             />
@@ -522,16 +524,16 @@ export function ChatMessageItem({
 
   // AI message
   return (
-    <div className="group/msg w-full py-3 md:py-4 border-b border-border/30 last:border-b-0">
+    <div className="group/msg flex w-full flex-col items-start py-5 md:py-6">
       {rollbackDialog}
-      <div className="min-w-0">
+      <div className="min-w-0 w-full">
         <p className="sr-only">Answer</p>
         {noEvidence ? (
           <ErrorState kind="no_evidence" className="mb-3" />
         ) : null}
         {conflict ? <ConflictState conflict={conflict} className="mb-3" /> : null}
         {!noEvidence ? (
-        <div className="rounded-md border border-border/80 bg-[var(--enterprise-elevated)] px-4 py-3 text-[15px] leading-[1.6] text-foreground">
+        <div className="chat-answer min-w-0">
           {reportMedia ? (
             <ReportCard
               media={reportMedia}
@@ -571,13 +573,13 @@ export function ChatMessageItem({
             remarkPlugins={[remarkGfm]}
             components={{
               p({ children }) {
-                return <p className="mb-3 last:mb-0 leading-7">{children}</p>;
+                return <p className="mb-3.5 last:mb-0">{children}</p>;
               },
               h1({ children }) {
                 return (
                   <MarkdownHeading
                     as="h1"
-                    className="mt-6 mb-3 text-xl font-bold first:mt-0 border-b border-border pb-2"
+                    className="mt-7 mb-3 text-[1.375rem] font-semibold leading-snug first:mt-0"
                   >
                     {children}
                   </MarkdownHeading>
@@ -587,7 +589,7 @@ export function ChatMessageItem({
                 return (
                   <MarkdownHeading
                     as="h2"
-                    className="mt-5 mb-2 text-lg font-semibold first:mt-0"
+                    className="mt-6 mb-2.5 text-[1.1875rem] font-semibold leading-snug first:mt-0"
                   >
                     {children}
                   </MarkdownHeading>
@@ -597,7 +599,7 @@ export function ChatMessageItem({
                 return (
                   <MarkdownHeading
                     as="h3"
-                    className="mt-4 mb-1.5 text-base font-semibold first:mt-0"
+                    className="mt-5 mb-2 text-[1.0625rem] font-semibold leading-snug first:mt-0"
                   >
                     {children}
                   </MarkdownHeading>
@@ -623,13 +625,17 @@ export function ChatMessageItem({
                   }
                   if (
                     lang === "infographic" ||
-                    (lang === "json" && looksLikeInfographicJson(codeString))
+                    ((lang === "json" || lang === "jsonc") &&
+                      looksLikeInfographicJson(codeString))
                   ) {
                     return <InfographicBlock rawJson={codeString} />;
                   }
                   return <CodeBlock language={match[1]} code={codeString} />;
                 }
                 if (!inline && !match && codeString.includes("\n")) {
+                  if (looksLikeInfographicJson(codeString)) {
+                    return <InfographicBlock rawJson={codeString} />;
+                  }
                   if (looksLikeAsciiArt(codeString)) {
                     return <AsciiArtBlock code={codeString} />;
                   }
@@ -637,7 +643,7 @@ export function ChatMessageItem({
                 }
                 return (
                   <code
-                    className="mx-0.5 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.8em] text-foreground"
+                    className="mx-0.5 rounded-md px-1.5 py-0.5 font-mono text-[0.82em]"
                     {...props}
                   >
                     {children}
@@ -649,34 +655,34 @@ export function ChatMessageItem({
               },
               blockquote({ children }) {
                 return (
-                  <blockquote className="my-3 border-l-[3px] border-border pl-4 text-muted-foreground italic">
+                  <blockquote className="my-4 rounded-r-md border-l-[3px] px-4 py-2 italic">
                     {children}
                   </blockquote>
                 );
               },
               ul({ children }) {
                 return (
-                  <ul className="my-3 space-y-1.5 list-disc pl-6">
+                  <ul className="my-3.5 space-y-2 list-disc pl-6">
                     {children}
                   </ul>
                 );
               },
               ol({ children }) {
                 return (
-                  <ol className="my-3 space-y-1.5 list-decimal pl-6">
+                  <ol className="my-3.5 space-y-2 list-decimal pl-6">
                     {children}
                   </ol>
                 );
               },
               li({ children }) {
-                return <li className="leading-7 pl-0.5">{children}</li>;
+                return <li className="pl-0.5 leading-[1.7]">{children}</li>;
               },
               hr() {
-                return <hr className="my-4 border-border" />;
+                return <hr className="my-6 border-[var(--enterprise-border)]/80" />;
               },
               strong({ children }) {
                 return (
-                  <strong className="font-semibold text-foreground">
+                  <strong className="font-semibold">
                     {children}
                   </strong>
                 );
@@ -686,8 +692,8 @@ export function ChatMessageItem({
               },
               table({ children }) {
                 return (
-                  <div className="my-4 w-full overflow-x-auto rounded-lg border border-border">
-                    <table className="w-full border-collapse text-sm">
+                  <div className="my-4 w-full overflow-x-auto rounded-lg border border-border/70 font-chat-sans">
+                    <table className="w-full border-collapse text-[13.5px]">
                       {children}
                     </table>
                   </div>
@@ -726,7 +732,7 @@ export function ChatMessageItem({
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary underline underline-offset-4 transition-opacity hover:opacity-70"
+                    className="underline decoration-[var(--chat-accent)]/40 underline-offset-[3px] transition-opacity hover:opacity-80"
                   >
                     {children}
                   </a>
@@ -740,7 +746,7 @@ export function ChatMessageItem({
         </div>
         ) : null}
 
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <MessageTimestamp iso={message.created_at} align="left" />
           <AnswerActions
             content={displayContent}

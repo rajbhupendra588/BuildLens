@@ -54,7 +54,7 @@ services:
       - ./reports_data:/app/reports_data
     # No --reload: hot reload kills in-flight PDF ingest (OCR can run 10+ minutes).
     command: sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    mem_limit: 4g
+    mem_limit: 8g
     cpus: 2.0
     environment:
       - PYTHONPATH=/app
@@ -66,7 +66,10 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - FASTEMBED_CACHE_DIR=/app/.cache/fastembed
       # Ingest master plans worker threads in-process (see INGEST__* in .env).
-      - INGEST__WORKER_MEMORY_BUDGET_GB=4
+      - INGEST__WORKER_MEMORY_BUDGET_GB=8
+      - INGEST__EMBED_BATCH_SIZE=8
+      - INGEST__CHUNK_YIELD_BATCH_SIZE=8
+      - INGEST__PRELOAD_EMBED_MODEL=true
     depends_on:
       qdrant:
         condition: service_healthy

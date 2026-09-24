@@ -18,7 +18,6 @@ import { EmptyState } from "@/components/enterprise-chat/empty-state";
 import { RetrievalStatus } from "@/components/enterprise-chat/retrieval-status";
 import { ReportViewer } from "@/components/enterprise-chat/report-viewer";
 import { isReportMedia } from "@/types/report";
-import { AddedContextStrip } from "@/components/enterprise-chat/added-context-strip";
 import { UploadStatus } from "@/components/enterprise-chat/upload-status";
 import { useDocumentScopeStore } from "@/hooks/use-document-scope-store";
 import { scopeLabel } from "@/types/document-scope";
@@ -325,11 +324,6 @@ function ChatInterfaceInner() {
   const showEmptyConversation =
     !isHistoryLoading && messages.length === 0 && !isTyping;
 
-  const composerFooter =
-    attachmentCount > 0
-      ? "Questions search attached files for this conversation."
-      : "Without attachments, answers draw from your indexed project library.";
-
   return (
     <ChatDocumentWorkspace>
       <ChatLayout
@@ -435,35 +429,21 @@ function ChatInterfaceInner() {
 
                 <div
                   className={cn(
-                    "sticky bottom-0 z-10 -mx-1 px-1 pt-6 pb-4 md:pb-5",
+                    "sticky bottom-0 z-30 -mx-1 px-1 pt-6 pb-4 md:pb-5",
                     "bg-gradient-to-t from-[var(--enterprise-bg)] via-[var(--enterprise-bg)]/95 to-transparent",
+                    "space-y-2",
                   )}
                 >
-                  <div
-                    className={cn(
-                      "rounded-2xl border border-[var(--enterprise-border)]",
-                      "bg-[var(--enterprise-surface)]/95 shadow-md shadow-black/25",
-                      "ring-1 ring-white/[0.04] p-3 md:p-3.5 space-y-2.5",
-                    )}
-                  >
-                    <UploadStatus />
-                    <AddedContextStrip
-                      attachmentCount={attachmentCount}
-                      onAttachmentCountChange={setAttachmentCount}
-                    />
-                    <ChatComposer
-                      embedded
-                      value={input}
-                      onChange={setInput}
-                      onSend={() => void handleSend()}
-                      isTyping={isTyping}
-                      onStop={stopGeneration}
-                      ensureSession={ensureSession}
-                    />
-                    <p className="text-[11px] text-muted-foreground leading-relaxed px-0.5">
-                      {composerFooter}
-                    </p>
-                  </div>
+                  <UploadStatus />
+                  <ChatComposer
+                    value={input}
+                    onChange={setInput}
+                    onSend={() => void handleSend()}
+                    isTyping={isTyping}
+                    onStop={stopGeneration}
+                    ensureSession={ensureSession}
+                    onAttachmentCountChange={setAttachmentCount}
+                  />
                 </div>
               </div>
             </div>

@@ -520,12 +520,54 @@ function tryParseJson(raw: string): unknown | undefined {
   }
 }
 
+/** Close strings/brackets when a stream or reply is cut off mid-JSON. */
+function closeTruncatedJson(raw: string): string {
+  let inString = false;
+  let escaped = false;
+  const stack: string[] = [];
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") {
+      if (stack.length) stack.pop();
+    }
+  }
+
+  let out = raw.trimEnd();
+  if (inString) out += '"';
+  out = out.replace(/,\s*$/, "");
+  while (stack.length) out += stack.pop();
+  return out;
+}
+
 function parseJsonLenient(raw: string): unknown | undefined {
   const stripped = extractJsonObject(replaceSmartQuotes(stripFence(raw)));
+  const repaired = repairLooseJson(stripped);
   return (
     tryParseJson(stripped) ??
-    tryParseJson(repairLooseJson(stripped)) ??
-    tryParseJson(repairLooseJson(replaceSmartQuotes(stripFence(raw))))
+    tryParseJson(repaired) ??
+    tryParseJson(closeTruncatedJson(repaired)) ??
+    tryParseJson(
+      closeTruncatedJson(repairLooseJson(replaceSmartQuotes(stripFence(raw)))),
+    )
   );
 }
 
@@ -587,6 +629,15 @@ export function parseInfographicJson(raw: string): ParseInfographicResult {
   };
 }
 
+function looksLikeInfographicPayload(raw: string): boolean {
+  const head = stripFence(raw).slice(0, 1600);
+  return (
+    /"kind"\s*:\s*"(infographic|dashboard)"/i.test(head) ||
+    (/"title"\s*:/.test(head) && /"blocks"\s*:/.test(head))
+  );
+}
+
 export function looksLikeInfographicJson(raw: string): boolean {
-  return parseInfographicJson(raw).ok;
+  if (parseInfographicJson(raw).ok) return true;
+  return looksLikeInfographicPayload(raw);
 }

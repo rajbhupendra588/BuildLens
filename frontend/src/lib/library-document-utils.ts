@@ -1,5 +1,21 @@
 import { LibraryDocument } from "@/types/document";
 
+/** True when RAG search can use this library file. */
+export function libraryDocIsIndexed(doc: LibraryDocument): boolean {
+  if (doc.index_status === "indexed") return true;
+  if (doc.index_status && doc.index_status !== "indexed") return false;
+  return (doc.chunk_count ?? 0) > 0;
+}
+
+export function libraryIndexStatusShort(doc: LibraryDocument): string | null {
+  const status = doc.index_status;
+  if (!status || status === "indexed") return null;
+  if (status === "indexing") return "Indexing…";
+  if (status === "error") return "Index failed";
+  if (status === "partial") return "Partial index";
+  return null;
+}
+
 export type LibrarySortKey =
   | "date-desc"
   | "date-asc"

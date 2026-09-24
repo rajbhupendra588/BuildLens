@@ -1,4 +1,6 @@
 import re
+import threading
+import time
 import uuid
 from pathlib import Path
 from typing import List, Dict, Any
@@ -7,7 +9,11 @@ from app.services.source_location_service import (
     enrich_location_metadata,
     format_location_label,
 )
-from app.services.vector_service import is_missing_collection_error, vector_service
+from app.services.vector_service import (
+    is_missing_collection_error,
+    vector_db_heavy_lock,
+    vector_service,
+)
 from qdrant_client import models
 
 # Meta-questions about the KB itself (file count, list uploads) — not document content.
@@ -91,10 +97,19 @@ _INVENTORY_QUERY = re.compile(
 )
 
 
+_INDEXED_DOCS_CACHE_TTL_SECONDS = 5.0
+
+
 class RetrievalService:
     def __init__(self):
         self.client = vector_service.client
         self.collection_name = settings.QDRANT.COLLECTION_NAME
+        self._indexed_docs_cache: tuple[float, list[dict[str, Any]]] | None = None
+        self._indexed_docs_cache_lock = threading.Lock()
+
+    def invalidate_indexed_documents_cache(self) -> None:
+        with self._indexed_docs_cache_lock:
+            self._indexed_docs_cache = None
 
     @property
     def model(self):
@@ -349,49 +364,67 @@ class RetrievalService:
         return "\n\n".join(parts)
 
     def _list_indexed_documents_sync(self) -> list[dict[str, Any]]:
+        now = time.monotonic()
+        with self._indexed_docs_cache_lock:
+            cached = self._indexed_docs_cache
+            if cached and now - cached[0] < _INDEXED_DOCS_CACHE_TTL_SECONDS:
+                return cached[1]
+
         vector_service.ensure_collection()
         if not vector_service.collection_exists():
             return []
 
         docs: dict[str, dict[str, Any]] = {}
         offset = None
-        while True:
-            try:
-                results, next_offset = self.client.scroll(
-                    collection_name=self.collection_name,
-                    limit=1000,
-                    offset=offset,
-                    with_payload=["metadata.document_id", "metadata.file_name"],
-                    with_vectors=False,
-                )
-            except Exception as exc:
-                if is_missing_collection_error(exc):
-                    return []
-                raise
-            for point in results:
-                meta = point.payload.get("metadata") or {}
-                doc_id = meta.get("document_id")
-                if not doc_id:
-                    continue
-                if doc_id not in docs:
-                    docs[doc_id] = {
-                        "document_id": doc_id,
-                        "file_name": meta.get("file_name", "unknown"),
-                        "chunk_count": 0,
-                    }
-                docs[doc_id]["chunk_count"] += 1
-            if next_offset is None:
-                break
-            offset = next_offset
+        # Never block HTTP/auth behind a long embed. Prefer stale cache over "nothing indexed".
+        if not vector_db_heavy_lock.acquire(timeout=0.4):
+            with self._indexed_docs_cache_lock:
+                if self._indexed_docs_cache:
+                    return self._indexed_docs_cache[1]
+            return []
+        try:
+            while True:
+                try:
+                    results, next_offset = self.client.scroll(
+                        collection_name=self.collection_name,
+                        limit=1000,
+                        offset=offset,
+                        with_payload=["metadata.document_id", "metadata.file_name"],
+                        with_vectors=False,
+                    )
+                except Exception as exc:
+                    if is_missing_collection_error(exc):
+                        return []
+                    raise
+                for point in results:
+                    meta = point.payload.get("metadata") or {}
+                    doc_id = meta.get("document_id")
+                    if not doc_id:
+                        continue
+                    if doc_id not in docs:
+                        docs[doc_id] = {
+                            "document_id": doc_id,
+                            "file_name": meta.get("file_name", "unknown"),
+                            "chunk_count": 0,
+                        }
+                    docs[doc_id]["chunk_count"] += 1
+                if next_offset is None:
+                    break
+                offset = next_offset
+        finally:
+            vector_db_heavy_lock.release()
 
-        return list(docs.values())
+        result = list(docs.values())
+        with self._indexed_docs_cache_lock:
+            self._indexed_docs_cache = (time.monotonic(), result)
+        return result
 
     async def list_indexed_documents(self):
         import asyncio
 
         return await asyncio.to_thread(self._list_indexed_documents_sync)
 
-    async def delete_document_by_id(self, document_id: str):
+    def delete_document_by_id_sync(self, document_id: str):
         if not vector_service.collection_exists():
             return None
         try:
@@ -410,6 +443,11 @@ class RetrievalService:
             if is_missing_collection_error(exc):
                 return None
             raise
+
+    async def delete_document_by_id(self, document_id: str):
+        import asyncio
+
+        return await asyncio.to_thread(self.delete_document_by_id_sync, document_id)
 
 
 retrieval_service = RetrievalService()

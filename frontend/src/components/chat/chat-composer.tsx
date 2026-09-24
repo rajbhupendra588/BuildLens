@@ -1,16 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  FolderOpen,
-  Loader2,
-  Mic,
-  MicOff,
-  Paperclip,
-  SendHorizontal,
-  Square,
-  X,
-} from "lucide-react";
 import { Button } from "../ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -27,9 +17,24 @@ import { useActiveChatSessionId } from "@/lib/active-chat-session";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { toast } from "sonner";
 import { SlashCommandMenu } from "./slash-command-menu";
+import { ChatToolsMenu } from "./chat-tools-menu";
 import { useChatDocumentPreview } from "./chat-document-preview-context";
+import { UploadTransferProgress } from "@/components/upload-transfer-progress";
+import {
+  FolderOpen,
+  FileText,
+  Loader2,
+  Mic,
+  MicOff,
+  Paperclip,
+  SendHorizontal,
+  Square,
+  X,
+} from "lucide-react";
 import { useDocumentScopeStore } from "@/hooks/use-document-scope-store";
 import { fileMatchesScope } from "@/types/document-scope";
+import { libraryDocIsIndexed } from "@/lib/library-document-utils";
+import type { LibraryDocument } from "@/types/document";
 import {
   applySlashCommandSelection,
   filterSlashCommands,
@@ -37,6 +42,9 @@ import {
   isSlashCommandMenuOpen,
   type ChatSlashCommand,
 } from "@/lib/chat-slash-commands";
+import { ComposerAttachments } from "./composer-attachments";
+import { DocumentScopeSelector } from "@/components/enterprise-chat/document-scope-selector";
+import { useReportStore } from "@/hooks/use-report-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,8 +68,7 @@ interface ChatComposerProps {
   onStop: () => void;
   disabled?: boolean;
   ensureSession?: () => Promise<string | null>;
-  /** Nested inside the unified chat dock (lighter chrome). */
-  embedded?: boolean;
+  onAttachmentCountChange?: (count: number) => void;
 }
 
 export function ChatComposer({
@@ -72,10 +79,13 @@ export function ChatComposer({
   onStop,
   disabled,
   ensureSession,
-  embedded,
+  onAttachmentCountChange,
 }: ChatComposerProps) {
   const activeSessionId = useActiveChatSessionId();
   const scopeId = useDocumentScopeStore((s) => s.scopeId);
+  const activeReportId = useReportStore((s) => s.activeReportId);
+  const activeReportTitle = useReportStore((s) => s.activeReportTitle);
+  const clearActiveReport = useReportStore((s) => s.clearActiveReport);
   const { openPreview } = useChatDocumentPreview();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -139,7 +149,11 @@ export function ChatComposer({
       const res = await apiRequest<{ documents: LibraryDocRow[] }>(
         "/documents/",
       );
-      setLibraryDocs(res.documents ?? []);
+      setLibraryDocs(
+        (res.documents ?? []).filter((doc) =>
+          libraryDocIsIndexed(doc as LibraryDocument),
+        ),
+      );
     } catch {
       setLibraryDocs([]);
     } finally {
@@ -247,111 +261,113 @@ export function ChatComposer({
     }
   };
 
-  return (
-    <div className="w-full min-w-0">
-      {activeUpload ? (
-        <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin shrink-0" />
-          <span className="truncate flex-1">
-            {activeUpload.chatReady
-              ? `Library indexing ${activeUpload.file.name}…`
-              : activeUpload.status === "processing"
-                ? `Preparing ${activeUpload.file.name} for chat…`
-                : activeUpload.status === "uploading"
-                  ? `Uploading ${activeUpload.file.name} (${activeUpload.progress}%)`
-                  : `Queued: ${activeUpload.file.name}`}
-          </span>
-        </div>
-      ) : null}
+  const [localAttachmentCount, setLocalAttachmentCount] = useState(0);
 
+  const handleAttachmentsChange = useCallback(
+    (count: number) => {
+      setLocalAttachmentCount(count);
+      onAttachmentCountChange?.(count);
+    },
+    [onAttachmentCountChange],
+  );
+
+  const hasContextRow =
+    Boolean(activeReportId) ||
+    scopeId !== "all" ||
+    Boolean(activeUpload) ||
+    localAttachmentCount > 0;
+
+  const iconBtnClass =
+    "size-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/80 hover:text-foreground";
+
+  return (
+    <div className="relative z-20 w-full min-w-0">
+      {slashMenuOpen ? (
+        <SlashCommandMenu
+          commands={slashCommands}
+          activeIndex={slashActiveIndex}
+          onHighlight={setSlashActiveIndex}
+          onSelect={selectSlashCommand}
+          groupByCategory={slashFilter.length === 0}
+        />
+      ) : null}
       <div
         className={cn(
-          "flex items-end gap-1 rounded-2xl px-2 py-2",
-          embedded
-            ? "border border-[var(--enterprise-border)]/70 bg-[var(--enterprise-elevated)]/90 focus-within:border-[var(--enterprise-accent)]/40"
-            : cn(
-                "rounded-[1.75rem] border bg-background shadow-sm ring-1 ring-border/60",
-                "focus-within:ring-2 focus-within:ring-primary/25",
-              ),
-          voice.isListening && "ring-2 ring-primary/40 border-primary/30",
+          "rounded-xl border border-[var(--enterprise-border)]/90",
+          "bg-[var(--enterprise-surface)] shadow-sm transition-[box-shadow,border-color]",
+          "focus-within:border-[var(--enterprise-accent)]/35 focus-within:shadow-md focus-within:shadow-black/10",
+          voice.isListening && "border-primary/40 ring-1 ring-primary/25",
         )}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          accept={DOCUMENT_ACCEPT}
-          multiple
-          onChange={(e) => void handleFiles(e.target.files)}
-        />
-
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-9 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
-          disabled={!!activeUpload || disabled}
-          title="Upload file"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Paperclip className="size-5" />
-        </Button>
-
-        <DropdownMenu onOpenChange={(open) => open && void loadLibrary()}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="size-9 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
-              disabled={!!activeUpload || disabled}
-              title="Add from library"
-            >
-              <FolderOpen className="size-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-72 w-72 overflow-y-auto">
-            <DropdownMenuLabel>Library files</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {libraryLoading ? (
-              <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
-            ) : scopedLibraryDocs.length === 0 ? (
-              <DropdownMenuItem disabled>
-                {scopeId === "all"
-                  ? "No indexed files yet"
-                  : "No files in this document scope"}
-              </DropdownMenuItem>
-            ) : (
-              scopedLibraryDocs.map((doc) => (
-                <DropdownMenuItem
-                  key={doc.document_id}
-                  className="truncate"
-                  onSelect={() => void attachFromLibrary(doc)}
+        {hasContextRow ? (
+          <div className="flex flex-col gap-2 border-b border-[var(--enterprise-border)]/50 px-3 py-2">
+            {activeReportId ? (
+              <div className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground">
+                <FileText className="size-3.5 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">
+                  Report
+                  {activeReportTitle ? `: ${activeReportTitle}` : ""}
+                </span>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  className="size-6"
+                  aria-label="Remove report context"
+                  onClick={clearActiveReport}
                 >
-                  {doc.file_name}
-                </DropdownMenuItem>
-              ))
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <div className="relative min-w-0 flex-1">
-          {slashMenuOpen ? (
-            <SlashCommandMenu
-              commands={slashCommands}
-              activeIndex={slashActiveIndex}
-              onHighlight={setSlashActiveIndex}
-              onSelect={selectSlashCommand}
+                  <X className="size-3.5" />
+                </Button>
+              </div>
+            ) : null}
+            {scopeId !== "all" ? <DocumentScopeSelector compact /> : null}
+            <ComposerAttachments
+              integrated
+              onAttachmentsChange={handleAttachmentsChange}
             />
-          ) : null}
+            {activeUpload ? (
+              <div className="text-[11px] text-muted-foreground">
+                {activeUpload.status === "uploading" ? (
+                  <div className="flex items-start gap-2">
+                    <Loader2 className="mt-0.5 size-3 shrink-0 animate-spin" />
+                    <UploadTransferProgress
+                      item={activeUpload}
+                      compact
+                      className="flex-1"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-3 shrink-0 animate-spin" />
+                    <span className="truncate">
+                      {activeUpload.chatReady
+                        ? `Indexing ${activeUpload.file.name}…`
+                        : activeUpload.status === "processing"
+                          ? `Preparing ${activeUpload.file.name}…`
+                          : `Queued: ${activeUpload.file.name}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <ComposerAttachments
+            integrated
+            className="sr-only"
+            onAttachmentsChange={handleAttachmentsChange}
+          />
+        )}
+
+        <div className="relative px-3 pt-2">
           <textarea
             id="chat-composer-input"
             ref={textareaRef}
-            rows={3}
+            rows={1}
             placeholder={
               voice.isListening
                 ? "Listening…"
-                : "Ask about your project or documents…"
+                : "Ask a question — / for commands, attach files below"
             }
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -394,63 +410,140 @@ export function ChatComposer({
             }}
             disabled={isTyping || !!activeUpload || disabled}
             className={cn(
-              "w-full resize-none bg-transparent px-1 py-2.5 text-[15px] leading-relaxed",
-              "placeholder:text-muted-foreground focus:outline-none min-h-[72px] max-h-[130px]",
+              "w-full resize-none bg-transparent py-1 text-[14px] leading-relaxed",
+              "placeholder:text-muted-foreground/80 focus:outline-none",
+              "min-h-[44px] max-h-[min(40vh,220px)]",
             )}
             onInput={(e) => {
               const el = e.currentTarget;
               el.style.height = "auto";
-              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+              el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
             }}
             aria-autocomplete={slashMenuOpen ? "list" : undefined}
             aria-expanded={slashMenuOpen}
           />
         </div>
 
-        {voice.isSupported ? (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className={cn(
-              "size-9 shrink-0 rounded-full",
-              voice.isListening
-                ? "text-primary bg-primary/10 hover:bg-primary/15"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-            disabled={!!activeUpload || disabled}
-            title={voice.isListening ? "Stop voice input" : "Voice input"}
-            onClick={() => voice.toggle(value)}
-          >
-            {voice.isListening ? (
-              <MicOff className="size-5" />
-            ) : (
-              <Mic className="size-5" />
-            )}
-          </Button>
-        ) : null}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept={DOCUMENT_ACCEPT}
+          multiple
+          onChange={(e) => void handleFiles(e.target.files)}
+        />
 
-        {isTyping ? (
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={onStop}
-            title="Stop generation"
-            className="shrink-0 size-9 rounded-full"
-          >
-            <Square className="size-4 fill-current" />
-          </Button>
-        ) : (
-          <Button
-            size="icon"
-            onClick={onSend}
-            disabled={!value.trim() || !!activeUpload || disabled}
-            className="shrink-0 size-9 rounded-full"
-            title="Send message"
-          >
-            <SendHorizontal className="size-5" />
-          </Button>
-        )}
+        <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
+          <div className="flex min-w-0 items-center gap-0.5">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={iconBtnClass}
+              disabled={!!activeUpload || disabled}
+              title="Upload file"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip className="size-4" />
+            </Button>
+
+            <DropdownMenu onOpenChange={(open) => open && void loadLibrary()}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className={iconBtnClass}
+                  disabled={!!activeUpload || disabled}
+                  title="Add from library"
+                >
+                  <FolderOpen className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-72 w-72 overflow-y-auto"
+              >
+                <DropdownMenuLabel>Library files</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {libraryLoading ? (
+                  <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+                ) : scopedLibraryDocs.length === 0 ? (
+                  <DropdownMenuItem disabled>
+                    {scopeId === "all"
+                      ? "No indexed files yet"
+                      : "No files in this document scope"}
+                  </DropdownMenuItem>
+                ) : (
+                  scopedLibraryDocs.map((doc) => (
+                    <DropdownMenuItem
+                      key={doc.document_id}
+                      className="truncate"
+                      onSelect={() => void attachFromLibrary(doc)}
+                    >
+                      {doc.file_name}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <ChatToolsMenu
+              disabled={!!activeUpload || disabled}
+              compact
+              className={cn(iconBtnClass, "size-7")}
+              onInsert={(text) => {
+                onChange(text);
+                requestAnimationFrame(() => textareaRef.current?.focus());
+              }}
+            />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-0.5">
+            {voice.isSupported ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={cn(
+                  iconBtnClass,
+                  voice.isListening && "bg-primary/10 text-primary",
+                )}
+                disabled={!!activeUpload || disabled}
+                title={voice.isListening ? "Stop voice input" : "Voice input"}
+                onClick={() => voice.toggle(value)}
+              >
+                {voice.isListening ? (
+                  <MicOff className="size-4" />
+                ) : (
+                  <Mic className="size-4" />
+                )}
+              </Button>
+            ) : null}
+
+            {isTyping ? (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={onStop}
+                title="Stop generation"
+                className="size-8 shrink-0 rounded-lg"
+              >
+                <Square className="size-3.5 fill-current" />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                onClick={onSend}
+                disabled={!value.trim() || !!activeUpload || disabled}
+                className="size-8 shrink-0 rounded-lg"
+                title="Send message"
+              >
+                <SendHorizontal className="size-4" />
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {voice.isListening ? (

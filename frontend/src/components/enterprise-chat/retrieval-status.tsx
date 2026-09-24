@@ -28,7 +28,7 @@ export function RetrievalStatus({
   return (
     <div
       className={cn(
-        "flex items-start gap-2 rounded-md border border-border bg-[var(--enterprise-surface)] px-4 py-3 text-[13px] text-muted-foreground",
+        "flex items-start gap-2.5 py-4 font-chat-sans text-[13.5px] text-[var(--chat-muted)]",
         className,
       )}
       role="status"

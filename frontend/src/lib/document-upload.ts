@@ -3,8 +3,18 @@ import {
   apiUploadWithProgress,
   pollIngestJob,
   pollIngestJobUntilChatReady,
+  type HttpUploadProgress,
 } from "@/lib/api";
 import { notifyDocumentsChanged } from "@/lib/document-library-events";
+import {
+  isLargeBackgroundUpload,
+  notifyUploadOutcome,
+} from "@/lib/upload-notifications";
+
+export {
+  BACKGROUND_UPLOAD_BYTES,
+  isLargeBackgroundUpload,
+} from "@/lib/upload-notifications";
 
 /** 20 MiB — must match backend STORAGE__MAX_UPLOAD_BYTES */
 export const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024;
@@ -91,12 +101,17 @@ export function validateDocumentFile(file: File): string | null {
 
 export interface UploadIndexOptions {
   sessionId?: string | null;
-  onProgress?: (percent: number) => void;
+  onProgress?: (percent: number, bytes?: HttpUploadProgress) => void;
   onChatReady?: () => void;
   /** Library only: block until Qdrant indexing finishes (default: return after bytes are saved). */
   waitForFullIndex?: boolean;
+  /** Session/large files: return after bytes are saved; preview + notifications run in background. */
+  runInBackground?: boolean;
   onIndexComplete?: () => void;
   onIndexError?: (message: string) => void;
+  /** Queue already polls the ingest job — skip the extra background watcher. */
+  disableBackgroundWatch?: boolean;
+  notifyOnIndex?: boolean;
 }
 
 export interface UploadIndexResult {
@@ -124,10 +139,14 @@ export async function uploadAndIndexDocument(
   const accepted = await apiUploadWithProgress<{
     job_id: string;
     document_id: string;
-  }>("/ingest/upload", formData, (pct) =>
-    options?.onProgress?.(Math.min(pct, 100)),
+  }>("/ingest/upload", formData, (progress) =>
+    options?.onProgress?.(Math.min(progress.percent, 100), progress),
   );
-  options?.onProgress?.(100);
+  options?.onProgress?.(100, {
+    loaded: file.size,
+    total: file.size,
+    percent: 100,
+  });
 
   const result = {
     jobId: accepted.job_id,
@@ -135,48 +154,76 @@ export async function uploadAndIndexDocument(
   };
 
   if (options?.sessionId) {
-    await pollIngestJobUntilChatReady(accepted.job_id, (job) => {
-      if (job.status === "quick_ready" || job.chat_ready) {
-        options?.onChatReady?.();
-      }
-    });
+    const sessionId = options.sessionId;
+    const runInBackground =
+      options.runInBackground ?? isLargeBackgroundUpload(file);
 
-    if (accepted.document_id) {
+    const finishSessionAttach = async () => {
+      if (!accepted.document_id) return;
       try {
-        await apiRequest(
-          `/chat/sessions/${options.sessionId}/attachments`,
-          {
-            method: "POST",
-            body: JSON.stringify({ document_id: accepted.document_id }),
-          },
-        );
+        await apiRequest(`/chat/sessions/${sessionId}/attachments`, {
+          method: "POST",
+          body: JSON.stringify({ document_id: accepted.document_id }),
+        });
       } catch {
         // Row may already exist from ingest quick_extract attach_to_session
       }
       window.dispatchEvent(
         new CustomEvent("buildlens:session-attachments-changed"),
       );
+    };
+
+    const runSessionIngest = async () => {
+      try {
+        await pollIngestJobUntilChatReady(accepted.job_id, (job) => {
+          if (job.status === "quick_ready" || job.chat_ready) {
+            options?.onChatReady?.();
+          }
+        });
+        await finishSessionAttach();
+        notifyUploadOutcome(file.name, "session-ready");
+        void pollIngestJob(accepted.job_id)
+          .then(() => notifyDocumentsChanged())
+          .catch(() => notifyDocumentsChanged());
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Document processing failed";
+        notifyUploadOutcome(file.name, "index-failed", message);
+        options?.onIndexError?.(message);
+      }
+    };
+
+    if (runInBackground) {
+      void runSessionIngest();
+      return result;
     }
 
-    void pollIngestJob(accepted.job_id)
-      .then(() => notifyDocumentsChanged())
-      .catch(() => notifyDocumentsChanged());
+    await runSessionIngest();
     return result;
   }
 
-  const runBackgroundIndex = () => {
+  const runBackgroundIndex = (notify: boolean) => {
     void pollIngestJob(accepted.job_id)
       .then(() => {
         notifyDocumentsChanged();
         options?.onIndexComplete?.();
+        if (notify) {
+          notifyUploadOutcome(file.name, "library-indexed");
+        }
       })
       .catch((error: unknown) => {
         notifyDocumentsChanged();
         const message =
           error instanceof Error ? error.message : "Indexing failed";
         options?.onIndexError?.(message);
+        if (notify) {
+          notifyUploadOutcome(file.name, "index-failed", message);
+        }
       });
   };
+
+  const largeLibrary = isLargeBackgroundUpload(file);
+  const notifyOnIndex = options?.notifyOnIndex ?? largeLibrary;
 
   if (options?.waitForFullIndex) {
     await pollIngestJob(accepted.job_id);
@@ -184,7 +231,9 @@ export async function uploadAndIndexDocument(
     options?.onIndexComplete?.();
   } else {
     notifyDocumentsChanged();
-    runBackgroundIndex();
+    if (!options?.disableBackgroundWatch) {
+      runBackgroundIndex(notifyOnIndex);
+    }
   }
 
   return result;
@@ -196,17 +245,26 @@ export function watchIngestJob(
   handlers: {
     onComplete?: () => void;
     onError?: (message: string) => void;
+    /** When true, show toast / system notification on result (large background uploads). */
+    notifyOnResult?: boolean;
+    fileName?: string;
   },
 ): void {
   void pollIngestJob(jobId)
     .then(() => {
       notifyDocumentsChanged();
       handlers.onComplete?.();
+      if (handlers.notifyOnResult && handlers.fileName) {
+        notifyUploadOutcome(handlers.fileName, "library-indexed");
+      }
     })
     .catch((error: unknown) => {
       notifyDocumentsChanged();
-      handlers.onError?.(
-        error instanceof Error ? error.message : "Indexing failed",
-      );
+      const message =
+        error instanceof Error ? error.message : "Indexing failed";
+      handlers.onError?.(message);
+      if (handlers.notifyOnResult && handlers.fileName) {
+        notifyUploadOutcome(handlers.fileName, "index-failed", message);
+      }
     });
 }

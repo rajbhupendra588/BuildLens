@@ -19,6 +19,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export type BlockReviseKind = "infographic" | "section";
@@ -141,22 +146,27 @@ export function BlockReviseButton({
   const ctx = useBlockRevise();
   if (!ctx || ctx.disabled) return null;
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="xs"
-      className={cn(
-        "shadow-sm backdrop-blur",
-        tone === "onDark"
-          ? "border-white/30 bg-white/15 text-white hover:bg-white/25 hover:text-white"
-          : "bg-background/95 text-muted-foreground",
-        className,
-      )}
-      onClick={() => ctx.open(target)}
-    >
-      <Pencil className="size-3" />
-      Edit
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Edit this block"
+          className={cn(
+            "text-muted-foreground hover:text-foreground",
+            tone === "onDark"
+              ? "text-white/85 hover:bg-white/15 hover:text-white"
+              : "bg-background/70 hover:bg-muted",
+            className,
+          )}
+          onClick={() => ctx.open(target)}
+        >
+          <Pencil className="size-3.5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="left">Edit this block</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -172,8 +182,8 @@ export function EditableBlockFrame({
   const ctx = useBlockRevise();
   if (!ctx || ctx.disabled) return <>{children}</>;
   return (
-    <div className={cn("group/block relative pr-14", className)}>
-      <div className="absolute right-0 top-0 z-10">
+    <div className={cn("group/block relative", className)}>
+      <div className="absolute right-0 top-0.5 z-10 opacity-50 transition-opacity duration-150 md:opacity-0 md:group-hover/block:opacity-100 group-focus-within/block:opacity-100">
         <BlockReviseButton target={target} />
       </div>
       {children}

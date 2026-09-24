@@ -19,11 +19,17 @@ class IntentMode(str, Enum):
     CODE_ARCHITECT = "CODE_ARCHITECT"
     CODE_DEBUGGER = "CODE_DEBUGGER"
     SUMMARIZER = "SUMMARIZER"
+    SEARCH = "SEARCH"
     BRIEFING_DOC = "BRIEFING_DOC"
     STUDY_GUIDE = "STUDY_GUIDE"
     INFOGRAPHIC = "INFOGRAPHIC"
     DASHBOARD = "DASHBOARD"
     DOCUMENT_REPORT = "DOCUMENT_REPORT"
+    RISK_REGISTER = "RISK_REGISTER"
+    ACTION_PLAN = "ACTION_PLAN"
+    TIMELINE = "TIMELINE"
+    FAQ = "FAQ"
+    CONFLICT_FINDER = "CONFLICT_FINDER"
     DATA_ANALYST = "DATA_ANALYST"
     CREATIVE = "CREATIVE"
 
@@ -34,8 +40,14 @@ _PRIORITY: List[IntentMode] = [
     IntentMode.CODE_ARCHITECT,
     IntentMode.DATA_ANALYST,
     IntentMode.SUMMARIZER,
+    IntentMode.SEARCH,
     IntentMode.BRIEFING_DOC,
     IntentMode.STUDY_GUIDE,
+    IntentMode.RISK_REGISTER,
+    IntentMode.ACTION_PLAN,
+    IntentMode.CONFLICT_FINDER,
+    IntentMode.TIMELINE,
+    IntentMode.FAQ,
     IntentMode.DOCUMENT_REPORT,
     IntentMode.DASHBOARD,
     IntentMode.INFOGRAPHIC,
@@ -50,11 +62,17 @@ _LABELS: Dict[IntentMode, str] = {
     IntentMode.CODE_ARCHITECT: "Code Architect",
     IntentMode.CODE_DEBUGGER: "Code Debugger",
     IntentMode.SUMMARIZER: "Summarizer",
+    IntentMode.SEARCH: "Deep Search",
     IntentMode.BRIEFING_DOC: "Briefing Document",
     IntentMode.STUDY_GUIDE: "Study Guide",
     IntentMode.INFOGRAPHIC: "Infographic",
     IntentMode.DASHBOARD: "Visual Dashboard",
     IntentMode.DOCUMENT_REPORT: "Document Report",
+    IntentMode.RISK_REGISTER: "Risk Register",
+    IntentMode.ACTION_PLAN: "Action Plan",
+    IntentMode.TIMELINE: "Project Timeline",
+    IntentMode.FAQ: "FAQ",
+    IntentMode.CONFLICT_FINDER: "Conflict Finder",
     IntentMode.DATA_ANALYST: "Data Analyst",
     IntentMode.CREATIVE: "Creative Synthesizer",
 }
@@ -65,11 +83,17 @@ _ICONS: Dict[IntentMode, str] = {
     IntentMode.CODE_ARCHITECT: "💻",
     IntentMode.CODE_DEBUGGER: "🐛",
     IntentMode.SUMMARIZER: "📋",
+    IntentMode.SEARCH: "🔍",
     IntentMode.BRIEFING_DOC: "📑",
     IntentMode.STUDY_GUIDE: "📚",
     IntentMode.INFOGRAPHIC: "🎨",
     IntentMode.DASHBOARD: "📊",
     IntentMode.DOCUMENT_REPORT: "📄",
+    IntentMode.RISK_REGISTER: "🛡️",
+    IntentMode.ACTION_PLAN: "✅",
+    IntentMode.TIMELINE: "📅",
+    IntentMode.FAQ: "❓",
+    IntentMode.CONFLICT_FINDER: "⚖️",
     IntentMode.DATA_ANALYST: "📈",
     IntentMode.CREATIVE: "💡",
 }

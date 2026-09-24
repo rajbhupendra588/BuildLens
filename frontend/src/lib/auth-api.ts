@@ -78,6 +78,7 @@ export async function loginRequest(body: {
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
   const response = await fetch(`${AUTH_BASE()}/me`, {
     credentials: "include",
+    signal: AbortSignal.timeout(8_000),
   });
   if (response.status === 401) return null;
   if (!response.ok) {

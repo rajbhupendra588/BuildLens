@@ -62,8 +62,14 @@ import {
   LIBRARY_KIND_FILTERS,
   LIBRARY_SORT_OPTIONS,
   sortLibraryDocuments,
+  libraryDocIsIndexed,
+  libraryIndexStatusShort,
 } from "@/lib/library-document-utils";
-import { LibraryDocument } from "@/types/document";
+import { LibraryDocument, UploadItem } from "@/types/document";
+import {
+  LibraryFileProgress,
+  matchLibraryUpload,
+} from "@/components/library/library-file-progress";
 
 const LIBRARY_SORT_STORAGE = "buildlens-library-sort";
 const LIBRARY_KIND_STORAGE = "buildlens-library-kind-filter";
@@ -261,6 +267,7 @@ export function DocumentLibrary() {
                 <li key={doc.document_id}>
                   <LibraryFileCard
                     doc={doc}
+                    uploadItem={matchLibraryUpload(doc, library.uploadQueue)}
                     onPreview={() => openPreview(doc)}
                     onAsk={() => setAskDoc(doc)}
                     onDelete={() => library.setDocToDelete(doc)}
@@ -294,12 +301,21 @@ export function DocumentLibrary() {
                   {displayedDocs.map((doc) => (
                     <TableRow key={doc.document_id} className="group">
                       <TableCell className="font-medium">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <FileIcon name={doc.file_name} />
-                          <span className="truncate" title={doc.file_name}>
-                            {doc.file_name}
-                          </span>
+                        <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FileIcon name={doc.file_name} />
+                            <span className="truncate" title={doc.file_name}>
+                              {doc.file_name}
+                            </span>
+                          </div>
+                          <IndexStatusBadge doc={doc} />
                         </div>
+                        <LibraryFileProgress
+                          doc={doc}
+                          uploadItem={matchLibraryUpload(doc, library.uploadQueue)}
+                          compact
+                          className="sm:max-w-sm"
+                        />
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground sm:table-cell">
                         {libraryFileKind(doc.file_name)}
@@ -467,6 +483,29 @@ export function DocumentLibrary() {
   );
 }
 
+function IndexStatusBadge({ doc }: { doc: LibraryDocument }) {
+  const label = libraryIndexStatusShort(doc);
+  if (!label) return null;
+  const isIndexing = doc.index_status === "indexing";
+  const isError = doc.index_status === "error";
+  const isPartial = doc.index_status === "partial";
+  const title = doc.index_error?.trim() || label;
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+        isIndexing && "bg-primary/10 text-primary",
+        isError && "bg-destructive/10 text-destructive",
+        isPartial && "bg-amber-500/15 text-amber-800 dark:text-amber-200",
+      )}
+    >
+      {isIndexing ? <Loader2 className="size-3 animate-spin" /> : null}
+      {label}
+    </span>
+  );
+}
+
 function FileActions({
   doc,
   onPreview,
@@ -480,13 +519,19 @@ function FileActions({
   onDelete: () => void;
   onRestore?: () => void;
 }) {
+  const canAsk = libraryDocIsIndexed(doc);
   return (
     <div className="flex justify-end gap-0.5">
       <Button
         variant="ghost"
         size="icon"
         className="h-8 w-8 text-muted-foreground hover:text-primary"
-        title="Ask about this file"
+        title={
+          canAsk
+            ? "Ask about this file"
+            : "Available after indexing finishes"
+        }
+        disabled={!canAsk}
         onClick={onAsk}
       >
         <MessageSquare className="size-4" />
@@ -548,18 +593,22 @@ function FileActions({
 
 function LibraryFileCard({
   doc,
+  uploadItem,
   onPreview,
   onAsk,
   onDelete,
   onRestore,
 }: {
   doc: LibraryDocument;
+  uploadItem?: UploadItem;
   onPreview: () => void;
   onAsk: () => void;
   onDelete: () => void;
   onRestore?: () => void;
 }) {
   const showThumb = Boolean(doc.has_file && isImageFileName(doc.file_name));
+  const showProgress =
+    uploadItem?.status === "uploading" || doc.index_status === "indexing";
 
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-colors hover:border-primary/30">
@@ -579,6 +628,10 @@ function LibraryFileCard({
         {!doc.has_file ? (
           <span className="absolute left-2 top-2 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200">
             Indexed only
+          </span>
+        ) : libraryIndexStatusShort(doc) && !showProgress ? (
+          <span className="absolute left-2 top-2">
+            <IndexStatusBadge doc={doc} />
           </span>
         ) : null}
         {showThumb ? (
@@ -603,8 +656,22 @@ function LibraryFileCard({
             {formatLibraryDate(doc.uploaded_at)}
             {" · "}
             {formatFileSize(doc.file_size)}
-            {doc.chunk_count != null ? ` · ${doc.chunk_count} chunks` : ""}
+            {libraryDocIsIndexed(doc) && doc.chunk_count != null
+              ? ` · ${doc.chunk_count} chunks`
+              : ""}
           </p>
+          {showProgress ? (
+            <LibraryFileProgress
+              doc={doc}
+              uploadItem={uploadItem}
+              className="mt-2"
+            />
+          ) : null}
+          {doc.index_error && doc.index_status === "error" ? (
+            <p className="line-clamp-2 text-xs text-destructive" title={doc.index_error}>
+              {doc.index_error}
+            </p>
+          ) : null}
         </div>
         <FileActions
           doc={doc}

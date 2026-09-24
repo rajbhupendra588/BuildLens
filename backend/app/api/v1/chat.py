@@ -27,7 +27,9 @@ from app.services.report_service import report_service
 from app.services.settings_service import settings_service
 from app.services.media_resolver import build_media_attachments, is_image_filename
 from app.services.document_storage_service import document_storage
+from app.models.document_catalog import DocumentCatalog
 from app.services.document_catalog_service import document_catalog_service
+from app.services.library_document_service import add_catalog_chunk_counts
 from app.services.quick_extract_service import is_placeholder_preview
 from app.services.source_location_service import (
     enrich_location_metadata,
@@ -49,7 +51,12 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 async def _library_documents(db: Session, user: User) -> list[dict]:
     docs = await retrieval_service.list_indexed_documents()
     docs = filter_documents_for_user(db, user, docs)
-    return document_catalog_service.enrich_documents(db, docs)
+    by_id = {d["document_id"]: d for d in docs if d.get("document_id")}
+    catalog_rows = list(
+        db.exec(select(DocumentCatalog).where(DocumentCatalog.user_id == user.id)).all()
+    )
+    add_catalog_chunk_counts(by_id, catalog_rows)
+    return document_catalog_service.enrich_documents(db, list(by_id.values()))
 
 
 def _assign_source_indices(context_chunks: list[dict]) -> None:
@@ -217,18 +224,20 @@ async def attach_library_document_to_session(
     docs = await _library_documents(db, current_user)
     doc_meta = next((d for d in docs if d["document_id"] == document_id), None)
     path = document_storage.find_path(document_id)
-    if doc_meta is None:
+    if doc_meta is None and catalog_row is None:
         session_rows = list_for_session(session_id)
         on_session = any(r.document_id == document_id for r in session_rows)
         if not on_session:
             raise HTTPException(status_code=404, detail="Document not found in library")
-    elif not path and not doc_meta:
-        raise HTTPException(status_code=404, detail="Document not found in library")
 
     file_name = (
-        doc_meta["file_name"]
-        if doc_meta
-        else (path.name if path else "unknown")
+        (doc_meta["file_name"] if doc_meta else None)
+        or (catalog_row.file_name if catalog_row else None)
+        or (path.name if path else "unknown")
+    )
+    indexed_in_library = bool(doc_meta) or (
+        catalog_row is not None
+        and vector_service.count_chunks_for_document(document_id) > 0
     )
 
     try:
@@ -236,7 +245,7 @@ async def attach_library_document_to_session(
             session_id,
             document_id,
             file_name,
-            indexed_in_library=doc_meta is not None,
+            indexed_in_library=indexed_in_library,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -414,6 +423,20 @@ async def ask_question_stream(
             title_seed = "Visual dashboard"
         elif slash.command == "report":
             title_seed = "Document report"
+        elif slash.command == "riskregister":
+            title_seed = "Risk register"
+        elif slash.command == "actionplan":
+            title_seed = "Action plan"
+        elif slash.command == "timeline":
+            title_seed = "Project timeline"
+        elif slash.command == "faq":
+            title_seed = "FAQ"
+        elif slash.command == "conflicts":
+            title_seed = "Conflict finder"
+        elif slash.command == "summarize":
+            title_seed = "Summary"
+        elif slash.command == "search":
+            title_seed = "Search"
         background_tasks.add_task(
             update_session_title_logic,
             db,
@@ -511,8 +534,16 @@ async def ask_question_stream(
         IntentMode.STUDY_GUIDE,
         IntentMode.INFOGRAPHIC,
         IntentMode.DASHBOARD,
+        IntentMode.RISK_REGISTER,
+        IntentMode.ACTION_PLAN,
+        IntentMode.TIMELINE,
+        IntentMode.FAQ,
+        IntentMode.CONFLICT_FINDER,
+        IntentMode.SUMMARIZER,
     ):
         search_limit = max(top_k, 12)
+    if slash.forced_mode == IntentMode.SEARCH:
+        search_limit = max(top_k, 16)
     if target_document_ids and len(target_document_ids) == 1:
         search_limit = max(search_limit, 8)
 

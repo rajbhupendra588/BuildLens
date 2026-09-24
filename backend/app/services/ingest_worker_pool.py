@@ -8,7 +8,12 @@ import threading
 from typing import Any
 
 from app.core.config import settings
-from app.services.ingest_job_service import count_claimable_jobs
+from app.core.database import engine
+from app.services.ingest_job_service import (
+    count_claimable_jobs,
+    reclaim_stale_processing_jobs,
+)
+from sqlmodel import Session
 from app.services.ingest_worker_plan import WorkerPlan, compute_worker_plan
 
 
@@ -27,6 +32,23 @@ class IngestWorkerPool:
 
     def master_start(self, plan: WorkerPlan | None = None) -> WorkerPlan:
         """Apply plan and create initial worker threads."""
+        reclaimed = 0
+        with Session(engine) as db:
+            reclaimed = reclaim_stale_processing_jobs(db)
+            if reclaimed:
+                print(
+                    f"[ingest-master] re-queued {reclaimed} stale processing job(s)"
+                )
+
+        if settings.INGEST.PRELOAD_EMBED_MODEL:
+            try:
+                from app.services.vector_service import preload_embedding_model
+
+                preload_embedding_model()
+                print("[embed] model ready")
+            except Exception as exc:
+                print(f"[embed] preload failed (will retry on first ingest): {exc}")
+
         if not settings.INGEST.ENABLE_WORKER_POOL:
             disabled = WorkerPlan(
                 max_parallel=0,
@@ -52,6 +74,8 @@ class IngestWorkerPool:
             f"reasons={list(resolved.reasons)}"
         )
         self._scale_to(resolved.initial_workers)
+        if reclaimed:
+            self.notify_work_available()
         return resolved
 
     def notify_work_available(self) -> None:
