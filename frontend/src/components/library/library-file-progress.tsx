@@ -32,14 +32,45 @@ function useElapsed(startedAtMs?: number): number {
   return elapsed;
 }
 
+export function incomingLibraryDocuments(
+  docs: LibraryDocument[],
+  queue: UploadItem[],
+): LibraryDocument[] {
+  const names = new Set(docs.map((doc) => doc.file_name));
+  return queue
+    .filter(
+      (item) =>
+        !item.sessionId &&
+        !names.has(item.file.name) &&
+        (item.status === "pending" ||
+          item.status === "uploading" ||
+          item.status === "processing"),
+    )
+    .map((item) => ({
+      document_id: `local-upload:${item.id}`,
+      file_name: item.file.name,
+      file_size: item.file.size,
+      has_file: false,
+      uploaded_at: new Date().toISOString(),
+      index_status: "indexing" as const,
+      ingest_status: item.status === "processing" ? "processing" : "queued",
+      index_started_at:
+        item.status === "processing" && item.processingStartedAt
+          ? new Date(item.processingStartedAt).toISOString()
+          : null,
+    }));
+}
+
 function IndexingBar({
   doc,
   startedAtMs,
   compact = false,
+  anotherFileIndexing = false,
 }: {
   doc: LibraryDocument;
   startedAtMs?: number;
   compact?: boolean;
+  anotherFileIndexing?: boolean;
 }) {
   const elapsed = useElapsed(startedAtMs);
   const queued =
@@ -47,7 +78,9 @@ function IndexingBar({
     (!startedAtMs && doc.ingest_status !== "processing");
   const isXlsx = /\.(xlsx|xls|csv)$/i.test(doc.file_name);
   const detail = queued
-    ? "One file at a time — this one hasn’t started yet"
+    ? anotherFileIndexing
+      ? "One file at a time — this one hasn’t started yet"
+      : "In the queue — indexing starts in a moment"
     : elapsed > 0
       ? `${formatElapsedClock(elapsed)} so far${
           isXlsx ? " · large spreadsheets can take several minutes" : ""
@@ -92,6 +125,7 @@ interface LibraryFileProgressProps {
   uploadItem?: UploadItem;
   className?: string;
   compact?: boolean;
+  anotherFileIndexing?: boolean;
 }
 
 export function LibraryFileProgress({
@@ -99,6 +133,7 @@ export function LibraryFileProgress({
   uploadItem,
   className,
   compact = false,
+  anotherFileIndexing = false,
 }: LibraryFileProgressProps) {
   const uploading = uploadItem?.status === "uploading";
   const indexing = doc.index_status === "indexing";
@@ -115,6 +150,7 @@ export function LibraryFileProgress({
           doc={doc}
           startedAtMs={Number.isFinite(startedAtMs) ? startedAtMs : undefined}
           compact={compact}
+          anotherFileIndexing={anotherFileIndexing}
         />
       )}
     </div>

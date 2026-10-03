@@ -45,15 +45,22 @@ async def get_documents(
     jobs_by_doc = latest_jobs_for_user(db, current_user.id)
 
     catalog_by_id = {row.document_id: row for row in catalog_rows}
-    all_ids: set[str] = set(indexed_by_id) | set(catalog_by_id)
+    active_job_ids = {
+        doc_id
+        for doc_id, job in jobs_by_doc.items()
+        if job.status in {"queued", "processing", "quick_ready"}
+    }
+    all_ids: set[str] = set(indexed_by_id) | set(catalog_by_id) | active_job_ids
 
     merged: list[dict] = []
     for doc_id in all_ids:
         catalog = catalog_by_id.get(doc_id)
         indexed = indexed_by_id.get(doc_id)
+        job = jobs_by_doc.get(doc_id)
         file_name = (
             (catalog.file_name if catalog else None)
             or (indexed.get("file_name") if indexed else None)
+            or (job.file_name if job else None)
             or "unknown"
         )
         base = {

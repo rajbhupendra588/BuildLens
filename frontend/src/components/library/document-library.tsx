@@ -67,6 +67,7 @@ import {
 } from "@/lib/library-document-utils";
 import { LibraryDocument, UploadItem } from "@/types/document";
 import {
+  incomingLibraryDocuments,
   LibraryFileProgress,
   matchLibraryUpload,
 } from "@/components/library/library-file-progress";
@@ -119,15 +120,29 @@ export function DocumentLibrary() {
   );
 
   const displayedDocs = useMemo(() => {
-    const filtered = filterLibraryDocuments(
+    const incoming = incomingLibraryDocuments(
       library.docs,
+      library.uploadQueue,
+    );
+    const filtered = filterLibraryDocuments(
+      [...incoming, ...library.docs],
       query,
       kindFilter,
     );
     return sortLibraryDocuments(filtered, sortKey);
-  }, [library.docs, query, kindFilter, sortKey]);
+  }, [library.docs, library.uploadQueue, query, kindFilter, sortKey]);
+
+  const anotherFileIndexing = useMemo(
+    () =>
+      displayedDocs.some(
+        (doc) =>
+          doc.index_status === "indexing" && doc.ingest_status === "processing",
+      ),
+    [displayedDocs],
+  );
 
   const openPreview = (doc: LibraryDocument) => {
+    if (doc.document_id.startsWith("local-upload:")) return;
     if (!doc.has_file) {
       setLegacyDoc(doc);
       return;
@@ -268,9 +283,18 @@ export function DocumentLibrary() {
                   <LibraryFileCard
                     doc={doc}
                     uploadItem={matchLibraryUpload(doc, library.uploadQueue)}
+                    anotherFileIndexing={anotherFileIndexing}
                     onPreview={() => openPreview(doc)}
-                    onAsk={() => setAskDoc(doc)}
-                    onDelete={() => library.setDocToDelete(doc)}
+                    onAsk={() => {
+                      if (!doc.document_id.startsWith("local-upload:")) {
+                        setAskDoc(doc);
+                      }
+                    }}
+                    onDelete={() => {
+                      if (!doc.document_id.startsWith("local-upload:")) {
+                        library.setDocToDelete(doc);
+                      }
+                    }}
                     onRestore={() => {
                       restoreTargetRef.current = doc;
                       setLegacyDoc(doc);
@@ -313,6 +337,7 @@ export function DocumentLibrary() {
                         <LibraryFileProgress
                           doc={doc}
                           uploadItem={matchLibraryUpload(doc, library.uploadQueue)}
+                          anotherFileIndexing={anotherFileIndexing}
                           compact
                           className="sm:max-w-sm"
                         />
@@ -333,8 +358,16 @@ export function DocumentLibrary() {
                         <FileActions
                           doc={doc}
                           onPreview={() => openPreview(doc)}
-                          onAsk={() => setAskDoc(doc)}
-                          onDelete={() => library.setDocToDelete(doc)}
+                          onAsk={() => {
+                            if (!doc.document_id.startsWith("local-upload:")) {
+                              setAskDoc(doc);
+                            }
+                          }}
+                          onDelete={() => {
+                            if (!doc.document_id.startsWith("local-upload:")) {
+                              library.setDocToDelete(doc);
+                            }
+                          }}
                           onRestore={() => {
                             restoreTargetRef.current = doc;
                             setLegacyDoc(doc);
@@ -520,6 +553,8 @@ function FileActions({
   onRestore?: () => void;
 }) {
   const canAsk = libraryDocIsIndexed(doc);
+  const stillArriving = doc.document_id.startsWith("local-upload:");
+  if (stillArriving) return null;
   return (
     <div className="flex justify-end gap-0.5">
       <Button
@@ -594,6 +629,7 @@ function FileActions({
 function LibraryFileCard({
   doc,
   uploadItem,
+  anotherFileIndexing = false,
   onPreview,
   onAsk,
   onDelete,
@@ -601,6 +637,7 @@ function LibraryFileCard({
 }: {
   doc: LibraryDocument;
   uploadItem?: UploadItem;
+  anotherFileIndexing?: boolean;
   onPreview: () => void;
   onAsk: () => void;
   onDelete: () => void;
@@ -664,6 +701,7 @@ function LibraryFileCard({
             <LibraryFileProgress
               doc={doc}
               uploadItem={uploadItem}
+              anotherFileIndexing={anotherFileIndexing}
               className="mt-2"
             />
           ) : null}
