@@ -16,5 +16,8 @@ export const DEFAULT_CHAT_PROVIDER = "openrouter";
 export const DEFAULT_CHAT_MODEL = OPENROUTER_CHAT_MODELS[0];
 
 export function isChatPanelModel(name: string): boolean {
-  return (OPENROUTER_CHAT_MODELS as readonly string[]).includes(name);
+  const names = OPENROUTER_CHAT_MODELS as readonly string[];
+  if (names.includes(name)) return true;
+  const paid = name.replace(/:free$/, "");
+  return names.some((model) => model.replace(/:free$/, "") === paid);
 }

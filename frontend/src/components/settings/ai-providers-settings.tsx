@@ -131,6 +131,7 @@ export function AiProvidersSettings() {
   const testProvider = async (providerId: string, keyName: string) => {
     setTesting((prev) => ({ ...prev, [providerId]: true }));
     setTestStatus((prev) => ({ ...prev, [providerId]: null }));
+    const typedKey = (apiKeys[keyName] || "").trim();
     try {
       const result = await apiRequest<TestConnectionResponse>(
         "/settings/test-connection",
@@ -138,21 +139,30 @@ export function AiProvidersSettings() {
           method: "POST",
           body: JSON.stringify({
             provider: providerId,
-            api_key: apiKeys[keyName] || undefined,
+            api_key: typedKey || undefined,
           }),
         },
       );
       setTestStatus((prev) => ({ ...prev, [providerId]: result }));
 
-      // Auto-save the key on success only if the user entered a new one
-      if (result.success && apiKeys[keyName]) {
+      if (result.saved) {
+        setExistingSettings((prev) => ({ ...prev, [keyName]: "****" }));
+        setApiKeys((prev) => ({ ...prev, [keyName]: "" }));
+      }
+
+      // Other providers still save from the UI after a successful test.
+      if (result.success && typedKey && !result.saved) {
         await apiRequest("/settings", {
           method: "PUT",
-          body: JSON.stringify({ settings: { [keyName]: apiKeys[keyName] } }),
+          body: JSON.stringify({ settings: { [keyName]: typedKey } }),
         });
         setExistingSettings((prev) => ({ ...prev, [keyName]: "****" }));
         setApiKeys((prev) => ({ ...prev, [keyName]: "" }));
         toast.success(`${providerId} API key saved`);
+      } else if (result.success) {
+        toast.success(result.message);
+      } else if (result.saved) {
+        toast.error(result.message);
       }
     } catch {
       setTestStatus((prev) => ({

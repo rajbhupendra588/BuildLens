@@ -56,16 +56,24 @@ export function ModelSelector({ restrictToChatModels = true }: ModelSelectorProp
 
         const { selectedProvider: provider, selectedModel: model } =
           useChatStore.getState();
+        const openrouterModels = all.filter((item) => item.provider === "openrouter");
+        const paidMatch = openrouterModels.find(
+          (item) => item.name === model.replace(/:free$/, ""),
+        );
         const chatSelectionInvalid =
           !model ||
           (restrictToChatModels &&
             (provider !== DEFAULT_CHAT_PROVIDER || !isChatPanelModel(model)));
         const onSlowDefault =
           restrictToChatModels &&
-          model === "nvidia/nemotron-3-ultra-550b-a55b:free";
-        if (chatSelectionInvalid || onSlowDefault) {
-          setSelectedProvider(DEFAULT_CHAT_PROVIDER);
-          setSelectedModel(DEFAULT_CHAT_MODEL);
+          model.replace(/:free$/, "") === "nvidia/nemotron-3-ultra-550b-a55b";
+        if (restrictToChatModels && provider === "openrouter" && paidMatch && paidMatch.name !== model) {
+          setSelectedProvider(paidMatch.provider);
+          setSelectedModel(paidMatch.name);
+        } else if (chatSelectionInvalid || onSlowDefault) {
+          const fallback = openrouterModels[0];
+          setSelectedProvider(fallback?.provider ?? DEFAULT_CHAT_PROVIDER);
+          setSelectedModel(fallback?.name ?? DEFAULT_CHAT_MODEL);
         }
       })
       .catch(() => setModels([]));
