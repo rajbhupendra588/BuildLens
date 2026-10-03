@@ -16,4 +16,5 @@ export interface TestConnectionRequest {
 export interface TestConnectionResponse {
   success: boolean;
   message: string;
+  saved?: boolean;
 }

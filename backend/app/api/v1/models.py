@@ -107,6 +107,14 @@ async def list_models(db: Session = Depends(get_session)):
     openai_key = settings_service.get("openai_api_key", db)
     gemini_key = settings_service.get("gemini_api_key", db)
     anthropic_key = settings_service.get("anthropic_api_key", db)
+    openrouter_key = settings_service.get("openrouter_api_key", db)
+    openrouter_models = [
+        {
+            "name": item["name"][: -len(":free")] if openrouter_key and item["name"].endswith(":free") else item["name"],
+            "provider": "openrouter",
+        }
+        for item in _OPENROUTER_CHAT_MODELS
+    ]
 
     # All fetches run concurrently — total time = slowest provider, not the sum
     ollama_result, openai_result, gemini_result, anthropic_result = await asyncio.gather(
@@ -119,7 +127,7 @@ async def list_models(db: Session = Depends(get_session)):
     return {
         "local": [{"name": m["name"], "provider": "ollama"} for m in ollama_result],
         "cloud": [
-            *_OPENROUTER_CHAT_MODELS,
+            *openrouter_models,
             *openai_result,
             *gemini_result,
             *anthropic_result,

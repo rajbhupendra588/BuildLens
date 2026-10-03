@@ -37,6 +37,7 @@ class TestConnectionRequest(BaseModel):
 class TestConnectionResponse(BaseModel):
     success: bool
     message: str
+    saved: bool = False
 
 
 @router.get("")
@@ -78,11 +79,63 @@ async def update_settings(body: SettingsUpdate, db: Session = Depends(get_sessio
     return {"message": "Settings updated"}
 
 
+async def _verify_openrouter_key(
+    api_key: Optional[str], db: Session
+) -> TestConnectionResponse:
+    """Confirm the key with OpenRouter, store it, then try a short reply."""
+    from app.services.llm_service import llm_service
+
+    key = (api_key or "").strip()
+    if not key:
+        key = (settings_service.get("openrouter_api_key", db) or "").strip()
+    if not key:
+        return TestConnectionResponse(
+            success=False,
+            message="Enter an OpenRouter API key.",
+        )
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        key_resp = await client.get(
+            "https://openrouter.ai/api/v1/key",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    if key_resp.status_code != 200:
+        return TestConnectionResponse(
+            success=False,
+            message="OpenRouter rejected this API key.",
+        )
+
+    settings_service.set("openrouter_api_key", key, db)
+    try:
+        await llm_service.generate_text(
+            "Reply with the single word ok.",
+            "Reply with one word.",
+            "openrouter",
+            "inclusionai/ling-3.0-flash-fin",
+            api_key=key,
+            max_tokens=32,
+        )
+    except Exception as exc:
+        return TestConnectionResponse(
+            success=False,
+            saved=True,
+            message=str(exc),
+        )
+    return TestConnectionResponse(
+        success=True,
+        saved=True,
+        message="OpenRouter key saved. This provider is ready for chat.",
+    )
+
+
 @router.post("/test-connection", response_model=TestConnectionResponse)
-async def test_connection(body: TestConnectionRequest):
+async def test_connection(
+    body: TestConnectionRequest,
+    db: Session = Depends(get_session),
+):
     """Test connectivity to a provider using the provided credentials."""
     provider = body.provider.lower()
-    api_key = body.api_key
+    api_key = (body.api_key or "").strip() or None
     base_url = body.base_url
 
     try:
@@ -124,16 +177,7 @@ async def test_connection(body: TestConnectionRequest):
             return TestConnectionResponse(success=False, message=f"HTTP {resp.status_code}: {resp.text[:100]}")
 
         elif provider == "openrouter":
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
-                    "https://openrouter.ai/api/v1/models",
-                    headers={"Authorization": f"Bearer {api_key or ''}"}
-                )
-            if resp.status_code == 200:
-                data = resp.json()
-                count = len(data.get("data", []))
-                return TestConnectionResponse(success=True, message=f"Connected. {count} model(s) available.")
-            return TestConnectionResponse(success=False, message=f"HTTP {resp.status_code}")
+            return await _verify_openrouter_key(api_key, db)
 
         elif provider == "moonshot":
             async with httpx.AsyncClient(timeout=10.0) as client:

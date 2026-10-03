@@ -1,4 +1,5 @@
 import json
+import re
 import httpx
 from typing import List, Dict, Any, AsyncGenerator, Optional
 
@@ -93,14 +94,16 @@ class LLMService:
         return response.text or ""
 
     async def _title_openrouter(self, prompt: str, model: str, api_key: Optional[str] = None) -> str:
+        if not api_key:
+            raise RuntimeError("OpenRouter API key is not configured. Add it in Settings.")
         client = self._openrouter_client(api_key)
         resp = await client.chat.completions.create(
-            model=model,
+            model=self._openrouter_model_for_key(model, api_key),
             messages=[{"role": "user", "content": prompt}],
             max_tokens=20,
             temperature=0,
         )
-        return resp.choices[0].message.content or ""
+        return self._coerce_text(resp.choices[0].message.content)
 
     async def generate_answer(
         self,
@@ -351,9 +354,38 @@ class LLMService:
     async def _stream_openrouter(
         self, model: str, query: str, system: str, api_key: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
+        api_key = (api_key or "").strip() or None
         if not api_key:
             yield f"data: {json.dumps({'type': 'error', 'content': 'OpenRouter API key is not configured. Add it in Settings.'})}\n\n"
             return
+        model = self._openrouter_model_for_key(model, api_key)
+        max_tokens = self._OPENROUTER_MAX_TOKENS
+        reasoning_tokens = self._OPENROUTER_REASONING_MAX_TOKENS
+        for attempt in (1, 2):
+            try:
+                async for event in self._openrouter_stream_attempt(
+                    model, query, system, api_key, max_tokens, reasoning_tokens
+                ):
+                    yield event
+                return
+            except Exception as exc:
+                budget = self._openrouter_credit_budget(exc) if attempt == 1 else None
+                if budget and budget < max_tokens:
+                    max_tokens = budget
+                    reasoning_tokens = min(reasoning_tokens, max(0, budget // 4))
+                    continue
+                yield f"data: {json.dumps({'type': 'error', 'content': self._openrouter_error_message(exc)})}\n\n"
+                return
+
+    async def _openrouter_stream_attempt(
+        self,
+        model: str,
+        query: str,
+        system: str,
+        api_key: str,
+        max_tokens: int,
+        reasoning_tokens: int,
+    ) -> AsyncGenerator[str, None]:
         try:
             client = self._openrouter_client(api_key)
             stream = await client.chat.completions.create(
@@ -363,10 +395,10 @@ class LLMService:
                     {"role": "user", "content": query},
                 ],
                 stream=True,
-                max_tokens=self._OPENROUTER_MAX_TOKENS,
+                max_tokens=max_tokens,
                 extra_body={
                     "reasoning": {
-                        "max_tokens": self._OPENROUTER_REASONING_MAX_TOKENS,
+                        "max_tokens": reasoning_tokens,
                     }
                 },
             )
@@ -414,14 +446,57 @@ class LLMService:
                         )
                     yield f"data: {json.dumps({'type': 'error', 'content': hint})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+        except Exception:
+            raise
+
+    @staticmethod
+    def _openrouter_credit_budget(exc: Exception) -> int | None:
+        """Token cap OpenRouter will still accept for this key, if it said so."""
+        message = ""
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict) and isinstance(body.get("message"), str):
+            message = body["message"]
+        match = re.search(r"can only afford (\d+)", message)
+        if not match:
+            return None
+        amount = int(match.group(1))
+        if amount < 32:
+            return None
+        return amount
+
+    @staticmethod
+    def _openrouter_model_for_key(model: str, api_key: Optional[str]) -> str:
+        """A personal key cannot call :free slugs. OpenRouter expects the paid id."""
+        if api_key and model.endswith(":free"):
+            return model[: -len(":free")]
+        return model
+
+    @staticmethod
+    def _openrouter_error_message(exc: Exception) -> str:
+        body = getattr(exc, "body", None)
+        message = ""
+        if isinstance(body, dict):
+            if isinstance(body.get("message"), str):
+                message = body["message"]
+            else:
+                err = body.get("error")
+                if isinstance(err, dict) and isinstance(err.get("message"), str):
+                    message = err["message"]
+        if not message:
+            message = str(exc)
+        lowered = message.lower()
+        if "more credits" in lowered or "can only afford" in lowered:
+            return (
+                "Your OpenRouter key does not have enough credits for this request. "
+                "Add credits at https://openrouter.ai/settings/credits, then try again."
+            )
+        return message
 
     def _openrouter_client(self, api_key: Optional[str]):
         from openai import AsyncOpenAI
 
         return AsyncOpenAI(
-            api_key=api_key,
+            api_key=(api_key or "").strip() or None,
             base_url="https://openrouter.ai/api/v1",
             default_headers={
                 "HTTP-Referer": "http://localhost:3000",
@@ -557,19 +632,39 @@ class LLMService:
         api_key: Optional[str],
         max_tokens: int,
     ) -> str:
+        api_key = (api_key or "").strip() or None
         if not api_key:
             raise RuntimeError("OpenRouter API key is not configured. Add it in Settings.")
         client = self._openrouter_client(api_key)
-        resp = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=max_tokens,
-            temperature=0,
-            extra_body={"reasoning": {"max_tokens": 1024}},
-        )
+        model = self._openrouter_model_for_key(model, api_key)
+        try:
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=max_tokens,
+                temperature=0,
+                extra_body={"reasoning": {"max_tokens": min(1024, max_tokens)}},
+            )
+        except Exception as exc:
+            budget = self._openrouter_credit_budget(exc)
+            if budget and budget < max_tokens:
+                try:
+                    resp = await client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": prompt},
+                        ],
+                        max_tokens=budget,
+                        temperature=0,
+                    )
+                except Exception as retry_exc:
+                    raise RuntimeError(self._openrouter_error_message(retry_exc)) from retry_exc
+            else:
+                raise RuntimeError(self._openrouter_error_message(exc)) from exc
         message = resp.choices[0].message
         text = self._coerce_text(getattr(message, "content", None))
         if text:
