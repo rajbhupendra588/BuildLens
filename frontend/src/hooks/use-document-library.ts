@@ -77,12 +77,19 @@ export function useDocumentLibrary() {
 
   useEffect(() => {
     const hasIndexing = docs.some((d) => d.index_status === "indexing");
-    if (!hasIndexing) return;
+    const hasIncoming = uploadQueue.some(
+      (item) =>
+        !item.sessionId &&
+        (item.status === "pending" ||
+          item.status === "uploading" ||
+          item.status === "processing"),
+    );
+    if (!hasIndexing && !hasIncoming) return;
     const timer = window.setInterval(() => {
       void fetchDocs({ silent: true });
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [docs]);
+  }, [docs, uploadQueue]);
 
   const enqueueLibraryFiles = (files: File[]) => {
     if (files.length === 0) return;
