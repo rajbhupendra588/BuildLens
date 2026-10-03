@@ -16,6 +16,7 @@ import { useChatStore } from "@/hooks/use-chat-store";
 import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_CHAT_PROVIDER,
+  MODELS_CHANGED_EVENT,
   isChatPanelModel,
 } from "@/lib/chat-models";
 import { cn } from "@/lib/utils";
@@ -26,9 +27,32 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   gemini: "Gemini",
   anthropic: "Anthropic",
+  zai: "Z.AI",
+  moonshot: "Moonshot AI",
+  minimax: "MiniMax",
 };
 
-const PROVIDER_ORDER = ["openrouter", "ollama", "openai", "gemini", "anthropic"];
+const PROVIDER_ORDER = [
+  "openrouter",
+  "ollama",
+  "openai",
+  "gemini",
+  "anthropic",
+  "zai",
+  "moonshot",
+  "minimax",
+];
+
+function extraProviders(models: ModelItem[] | null): string[] {
+  const known = new Set(PROVIDER_ORDER);
+  const extras: string[] = [];
+  for (const item of models ?? []) {
+    if (!known.has(item.provider) && !extras.includes(item.provider)) {
+      extras.push(item.provider);
+    }
+  }
+  return extras;
+}
 
 interface ModelSelectorProps {
   /** Chat panel only lists OpenRouter allowlisted models; Settings can show all. */
@@ -49,54 +73,75 @@ export function ModelSelector({ restrictToChatModels = true }: ModelSelectorProp
   const isLoading = models === null;
 
   useEffect(() => {
-    apiRequest<ModelsResponse>("/models/")
-      .then((res) => {
-        const all = [...res.local, ...res.cloud];
-        setModels(all);
+    let cancelled = false;
 
-        const { selectedProvider: provider, selectedModel: model } =
-          useChatStore.getState();
-        const openrouterModels = all.filter((item) => item.provider === "openrouter");
-        const paidMatch = openrouterModels.find(
-          (item) => item.name === model.replace(/:free$/, ""),
-        );
-        const chatSelectionInvalid =
-          !model ||
-          (restrictToChatModels &&
-            (provider !== DEFAULT_CHAT_PROVIDER || !isChatPanelModel(model)));
-        const onSlowDefault =
-          restrictToChatModels &&
-          model.replace(/:free$/, "") === "nvidia/nemotron-3-ultra-550b-a55b";
-        if (restrictToChatModels && provider === "openrouter" && paidMatch && paidMatch.name !== model) {
-          setSelectedProvider(paidMatch.provider);
-          setSelectedModel(paidMatch.name);
-        } else if (chatSelectionInvalid || onSlowDefault) {
-          const fallback = openrouterModels[0];
-          setSelectedProvider(fallback?.provider ?? DEFAULT_CHAT_PROVIDER);
-          setSelectedModel(fallback?.name ?? DEFAULT_CHAT_MODEL);
-        }
-      })
-      .catch(() => setModels([]));
+    let requestId = 0;
+    const loadModels = () => {
+      const id = ++requestId;
+      apiRequest<ModelsResponse>("/models/")
+        .then((res) => {
+          if (cancelled || id !== requestId) return;
+          const all = [...res.local, ...res.cloud];
+          setModels(all);
+
+          const { selectedProvider: provider, selectedModel: model } =
+            useChatStore.getState();
+          const selected = all.find(
+            (item) => item.provider === provider && item.name === model,
+          );
+          const openrouterModels = all.filter((item) => item.provider === "openrouter");
+          const paidMatch = openrouterModels.find(
+            (item) => item.name === model.replace(/:free$/, ""),
+          );
+          const keepCustom = Boolean(selected?.custom);
+          const chatSelectionInvalid =
+            !model ||
+            (restrictToChatModels &&
+              !keepCustom &&
+              (provider !== DEFAULT_CHAT_PROVIDER || !isChatPanelModel(model)));
+          const onSlowDefault =
+            restrictToChatModels &&
+            !keepCustom &&
+            model.replace(/:free$/, "") === "nvidia/nemotron-3-ultra-550b-a55b";
+          if (restrictToChatModels && provider === "openrouter" && paidMatch && paidMatch.name !== model && !keepCustom) {
+            setSelectedProvider(paidMatch.provider);
+            setSelectedModel(paidMatch.name);
+          } else if (chatSelectionInvalid || onSlowDefault) {
+            const fallback = openrouterModels[0];
+            setSelectedProvider(fallback?.provider ?? DEFAULT_CHAT_PROVIDER);
+            setSelectedModel(fallback?.name ?? DEFAULT_CHAT_MODEL);
+          }
+        })
+        .catch(() => {
+          if (!cancelled && id === requestId) setModels([]);
+        });
+    };
+
+    loadModels();
+    window.addEventListener(MODELS_CHANGED_EVENT, loadModels);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(MODELS_CHANGED_EVENT, loadModels);
+    };
   }, [restrictToChatModels, setSelectedProvider, setSelectedModel]);
 
   const handleSelect = (item: ModelItem) => {
-    if (restrictToChatModels && !isChatPanelModel(item.name)) return;
+    if (restrictToChatModels && !isChatPanelModel(item.name) && !item.custom) return;
     setSelectedProvider(item.provider);
     setSelectedModel(item.name);
     setOpen(false);
   };
 
   const isSelectable = (item: ModelItem) =>
-    !restrictToChatModels || isChatPanelModel(item.name);
+    !restrictToChatModels || isChatPanelModel(item.name) || Boolean(item.custom);
 
-  const grouped = PROVIDER_ORDER.reduce<Record<string, ModelItem[]>>(
-    (acc, provider) => {
-      const items = (models ?? []).filter((m) => m.provider === provider);
-      if (items.length > 0) acc[provider] = items;
-      return acc;
-    },
-    {},
-  );
+  const grouped = [...PROVIDER_ORDER, ...extraProviders(models)].reduce<
+    Record<string, ModelItem[]>
+  >((acc, provider) => {
+    const items = (models ?? []).filter((m) => m.provider === provider);
+    if (items.length > 0) acc[provider] = items;
+    return acc;
+  }, {});
 
   const displayLabel = selectedModel
     ? `${PROVIDER_LABELS[selectedProvider] ?? selectedProvider} · ${selectedModel}`

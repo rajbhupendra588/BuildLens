@@ -17,7 +17,7 @@ const SETTINGS_SECTIONS = [
   {
     id: "ai-providers",
     title: "AI Providers",
-    description: "Ollama URL, cloud API keys, default model",
+    description: "Ollama URL, API keys, and extra models",
     icon: Bot,
   },
   {

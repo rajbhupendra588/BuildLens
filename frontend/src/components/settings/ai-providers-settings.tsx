@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Eye, EyeOff, Loader2, CheckCircle, XCircle, Plus, Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -12,8 +12,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { apiRequest, logApiError } from "@/lib/api";
+import { ApiError, apiRequest, logApiError } from "@/lib/api";
+import { notifyModelsChanged } from "@/lib/chat-models";
 import { AppSettings, TestConnectionResponse } from "@/types/settings";
+import { ModelItem } from "@/types/chat";
 import { toast } from "sonner";
 import { ModelSelector } from "@/components/chat/model-selector";
 
@@ -57,6 +59,15 @@ const CLOUD_PROVIDERS = [
   },
 ];
 
+const MODEL_PROVIDERS = [
+  { id: "ollama", label: "Ollama (Local)" },
+  ...CLOUD_PROVIDERS.map(({ id, label }) => ({ id, label })),
+];
+
+const PROVIDER_LABELS = Object.fromEntries(
+  MODEL_PROVIDERS.map(({ id, label }) => [id, label]),
+);
+
 function ConnectionStatus({
   result,
 }: {
@@ -90,6 +101,19 @@ export function AiProvidersSettings() {
     Record<string, TestConnectionResponse | null>
   >({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
+  const [customModels, setCustomModels] = useState<ModelItem[]>([]);
+  const [newProvider, setNewProvider] = useState(MODEL_PROVIDERS[0].id);
+  const [newModelName, setNewModelName] = useState("");
+  const [savingModel, setSavingModel] = useState(false);
+  const [removingKey, setRemovingKey] = useState<string | null>(null);
+
+  const loadCustomModels = () => {
+    apiRequest<{ models: ModelItem[] }>("/models/custom")
+      .then((data) => setCustomModels(data.models ?? []))
+      .catch((error) => {
+        logApiError("Failed to load custom models", error);
+      });
+  };
 
   useEffect(() => {
     apiRequest<AppSettings>("/settings")
@@ -100,7 +124,50 @@ export function AiProvidersSettings() {
       .catch((error) => {
         logApiError("Failed to load provider settings", error);
       });
+    loadCustomModels();
   }, []);
+
+  const addModel = async () => {
+    const name = newModelName.trim();
+    if (!name) return;
+    setSavingModel(true);
+    try {
+      const data = await apiRequest<{ models: ModelItem[] }>("/models/custom", {
+        method: "POST",
+        body: JSON.stringify({ provider: newProvider, name }),
+      });
+      setCustomModels(data.models ?? []);
+      setNewModelName("");
+      notifyModelsChanged();
+      toast.success("Model added");
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : "Could not add model";
+      toast.error(message);
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
+  const removeModel = async (model: ModelItem) => {
+    const key = `${model.provider}:${model.name}`;
+    setRemovingKey(key);
+    try {
+      const data = await apiRequest<{ models: ModelItem[] }>("/models/custom", {
+        method: "DELETE",
+        body: JSON.stringify({ provider: model.provider, name: model.name }),
+      });
+      setCustomModels(data.models ?? []);
+      notifyModelsChanged();
+      toast.success("Model removed");
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : "Could not remove model";
+      toast.error(message);
+    } finally {
+      setRemovingKey(null);
+    }
+  };
 
   const testOllama = async () => {
     setOllamaTesting(true);
@@ -180,7 +247,8 @@ export function AiProvidersSettings() {
         <CardTitle>AI Providers</CardTitle>
         <CardDescription>
           Configure connection details for local and cloud LLM providers.
-          Keys are saved automatically on successful test.
+          Keys are saved automatically on successful test. Add model ids
+          that should appear in the model picker.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -271,6 +339,94 @@ export function AiProvidersSettings() {
               <ConnectionStatus result={testStatus[id] ?? null} />
             </div>
           ))}
+        </div>
+
+        <Separator />
+
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Models</p>
+            <p className="text-xs text-muted-foreground">
+              Add a model id for a provider, such as gpt-4o or
+              apodex/apodex-1.1-mini:free. Free OpenRouter models need the
+              :free suffix.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              value={newProvider}
+              onChange={(e) => setNewProvider(e.target.value)}
+              className="border-input dark:bg-input/30 h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] sm:w-44"
+            >
+              {MODEL_PROVIDERS.map(({ id, label }) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <Input
+              value={newModelName}
+              onChange={(e) => setNewModelName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void addModel();
+                }
+              }}
+              placeholder="Model id"
+              className="flex-1"
+              autoComplete="off"
+            />
+            <Button
+              size="sm"
+              onClick={() => void addModel()}
+              disabled={savingModel || !newModelName.trim()}
+            >
+              {savingModel ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Plus className="size-3.5" />
+              )}
+              Add
+            </Button>
+          </div>
+          {customModels.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No extra models yet.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {customModels.map((model) => {
+                const key = `${model.provider}:${model.name}`;
+                return (
+                  <li
+                    key={key}
+                    className="flex items-center gap-2 rounded-md border px-2 py-1.5"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      <span className="text-muted-foreground">
+                        {PROVIDER_LABELS[model.provider] ?? model.provider}
+                      </span>
+                      <span className="mx-1.5 text-muted-foreground">·</span>
+                      {model.name}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Remove ${model.name}`}
+                      onClick={() => void removeModel(model)}
+                      disabled={removingKey === key}
+                    >
+                      {removingKey === key ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         <Separator />

@@ -361,7 +361,9 @@ class LLMService:
         model = self._openrouter_model_for_key(model, api_key)
         max_tokens = self._OPENROUTER_MAX_TOKENS
         reasoning_tokens = self._OPENROUTER_REASONING_MAX_TOKENS
-        for attempt in (1, 2):
+        tried_slug = False
+        shrunk = False
+        while True:
             try:
                 async for event in self._openrouter_stream_attempt(
                     model, query, system, api_key, max_tokens, reasoning_tokens
@@ -369,11 +371,18 @@ class LLMService:
                     yield event
                 return
             except Exception as exc:
-                budget = self._openrouter_credit_budget(exc) if attempt == 1 else None
+                budget = None if shrunk else self._openrouter_credit_budget(exc)
                 if budget and budget < max_tokens:
                     max_tokens = budget
                     reasoning_tokens = min(reasoning_tokens, max(0, budget // 4))
+                    shrunk = True
                     continue
+                if not tried_slug and self._openrouter_missing_endpoint(exc):
+                    alternate = self._openrouter_slug_fallback(model)
+                    if alternate and alternate != model:
+                        model = alternate
+                        tried_slug = True
+                        continue
                 yield f"data: {json.dumps({'type': 'error', 'content': self._openrouter_error_message(exc)})}\n\n"
                 return
 
@@ -449,13 +458,43 @@ class LLMService:
         except Exception:
             raise
 
+    # Built-in chat models that have a paid twin. Free-only slugs must keep :free.
+    _OPENROUTER_PAID_ALIAS = {
+        "inclusionai/ling-3.0-flash-fin:free": "inclusionai/ling-3.0-flash-fin",
+        "poolside/laguna-s-2.1:free": "poolside/laguna-s-2.1",
+        "nvidia/nemotron-3-super-120b-a12b:free": "nvidia/nemotron-3-super-120b-a12b",
+        "nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b",
+    }
+
+    @staticmethod
+    def _openrouter_exception_text(exc: Exception) -> str:
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict):
+            if isinstance(body.get("message"), str):
+                return body["message"]
+            err = body.get("error")
+            if isinstance(err, dict) and isinstance(err.get("message"), str):
+                return err["message"]
+        return str(exc)
+
+    @staticmethod
+    def _openrouter_missing_endpoint(exc: Exception) -> bool:
+        return "no endpoints found" in LLMService._openrouter_exception_text(exc).lower()
+
+    @staticmethod
+    def _openrouter_slug_fallback(model: str) -> str | None:
+        """Free-only models live at the :free slug; paid twins live without it."""
+        if model.endswith(":free"):
+            paid = model[: -len(":free")]
+            return paid or None
+        if model:
+            return f"{model}:free"
+        return None
+
     @staticmethod
     def _openrouter_credit_budget(exc: Exception) -> int | None:
         """Token cap OpenRouter will still accept for this key, if it said so."""
-        message = ""
-        body = getattr(exc, "body", None)
-        if isinstance(body, dict) and isinstance(body.get("message"), str):
-            message = body["message"]
+        message = LLMService._openrouter_exception_text(exc)
         match = re.search(r"can only afford (\d+)", message)
         if not match:
             return None
@@ -466,25 +505,20 @@ class LLMService:
 
     @staticmethod
     def _openrouter_model_for_key(model: str, api_key: Optional[str]) -> str:
-        """A personal key cannot call :free slugs. OpenRouter expects the paid id."""
-        if api_key and model.endswith(":free"):
-            return model[: -len(":free")]
+        """Use the paid id only for built-in models that have one."""
+        if api_key:
+            return LLMService._OPENROUTER_PAID_ALIAS.get(model, model)
         return model
 
     @staticmethod
     def _openrouter_error_message(exc: Exception) -> str:
-        body = getattr(exc, "body", None)
-        message = ""
-        if isinstance(body, dict):
-            if isinstance(body.get("message"), str):
-                message = body["message"]
-            else:
-                err = body.get("error")
-                if isinstance(err, dict) and isinstance(err.get("message"), str):
-                    message = err["message"]
-        if not message:
-            message = str(exc)
+        message = LLMService._openrouter_exception_text(exc)
         lowered = message.lower()
+        if "no endpoints found" in lowered:
+            return (
+                f"{message} Free-only OpenRouter models use a :free id, "
+                "for example apodex/apodex-1.1-mini:free."
+            )
         if "more credits" in lowered or "can only afford" in lowered:
             return (
                 "Your OpenRouter key does not have enough credits for this request. "
@@ -649,6 +683,35 @@ class LLMService:
                 extra_body={"reasoning": {"max_tokens": min(1024, max_tokens)}},
             )
         except Exception as exc:
+            alternate = (
+                self._openrouter_slug_fallback(model)
+                if self._openrouter_missing_endpoint(exc)
+                else None
+            )
+            if alternate and alternate != model:
+                model = alternate
+                try:
+                    resp = await client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": prompt},
+                        ],
+                        max_tokens=max_tokens,
+                        temperature=0,
+                        extra_body={"reasoning": {"max_tokens": min(1024, max_tokens)}},
+                    )
+                except Exception as retry_exc:
+                    exc = retry_exc
+                else:
+                    message = resp.choices[0].message
+                    text = self._coerce_text(getattr(message, "content", None))
+                    if text:
+                        return text
+                    return self._visible_answer_from_reasoning(
+                        self._coerce_text(getattr(message, "reasoning", None))
+                        or self._coerce_text(getattr(message, "reasoning_content", None))
+                    )
             budget = self._openrouter_credit_budget(exc)
             if budget and budget < max_tokens:
                 try:
