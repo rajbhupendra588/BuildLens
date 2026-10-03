@@ -115,6 +115,7 @@ export interface ChatSession {
 export interface ModelItem {
   name: string;
   provider: string;
+  custom?: boolean;
 }
 
 export interface ModelsResponse {

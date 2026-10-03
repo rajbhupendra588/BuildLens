@@ -1,5 +1,9 @@
 import asyncio
-from fastapi import APIRouter, Depends
+import json
+import re
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlmodel import Session
 import httpx
 
@@ -8,6 +12,22 @@ from app.services.settings_service import settings_service
 from app.core.database import get_session
 
 router = APIRouter(prefix="/models", tags=["Models"])
+
+_CUSTOM_MODELS_KEY = "custom_models"
+_MAX_CUSTOM_MODELS = 50
+_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+_ALLOWED_PROVIDERS = frozenset(
+    {
+        "ollama",
+        "openai",
+        "anthropic",
+        "gemini",
+        "openrouter",
+        "zai",
+        "moonshot",
+        "minimax",
+    }
+)
 
 # Fallbacks used when API key is not configured or the remote call fails
 _FALLBACK_OPENAI = [
@@ -102,6 +122,100 @@ async def _fetch_anthropic_models(api_key: str | None) -> list[dict]:
         return _FALLBACK_ANTHROPIC
 
 
+class CustomModelBody(BaseModel):
+    provider: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=128)
+
+
+def _load_custom_models(db: Session) -> list[dict]:
+    raw = settings_service.get(_CUSTOM_MODELS_KEY, db)
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+
+    models: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        provider = str(item.get("provider", "")).strip().lower()
+        name = str(item.get("name", "")).strip()
+        key = (provider, name)
+        if provider not in _ALLOWED_PROVIDERS or not name or key in seen:
+            continue
+        seen.add(key)
+        models.append({"provider": provider, "name": name})
+    return models
+
+
+def _save_custom_models(models: list[dict], db: Session) -> None:
+    settings_service.set(_CUSTOM_MODELS_KEY, json.dumps(models), db)
+
+
+def _normalize_custom_model(body: CustomModelBody) -> dict:
+    provider = body.provider.strip().lower()
+    name = body.name.strip()
+    if provider not in _ALLOWED_PROVIDERS:
+        raise HTTPException(status_code=400, detail="Choose a supported provider.")
+    if not _MODEL_NAME_RE.fullmatch(name):
+        raise HTTPException(
+            status_code=400,
+            detail="Model id can use letters, numbers, and . _ : / -",
+        )
+    return {"provider": provider, "name": name}
+
+
+def _merge_custom_models(models: list[dict], custom: list[dict]) -> list[dict]:
+    index = {(item["provider"], item["name"]): i for i, item in enumerate(models)}
+    merged = [dict(item) for item in models]
+    for item in custom:
+        key = (item["provider"], item["name"])
+        if key in index:
+            merged[index[key]]["custom"] = True
+            continue
+        merged.append({**item, "custom": True})
+    return merged
+
+
+@router.get("/custom")
+async def list_custom_models(db: Session = Depends(get_session)):
+    return {"models": _load_custom_models(db)}
+
+
+@router.post("/custom")
+async def add_custom_model(body: CustomModelBody, db: Session = Depends(get_session)):
+    model = _normalize_custom_model(body)
+    models = _load_custom_models(db)
+    key = (model["provider"], model["name"])
+    if any((item["provider"], item["name"]) == key for item in models):
+        raise HTTPException(status_code=409, detail="That model is already added.")
+    if len(models) >= _MAX_CUSTOM_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You can add up to {_MAX_CUSTOM_MODELS} models.",
+        )
+    models.append(model)
+    _save_custom_models(models, db)
+    return {"models": models}
+
+
+@router.delete("/custom")
+async def remove_custom_model(body: CustomModelBody, db: Session = Depends(get_session)):
+    model = _normalize_custom_model(body)
+    models = _load_custom_models(db)
+    key = (model["provider"], model["name"])
+    remaining = [item for item in models if (item["provider"], item["name"]) != key]
+    if len(remaining) == len(models):
+        raise HTTPException(status_code=404, detail="Model not found.")
+    _save_custom_models(remaining, db)
+    return {"models": remaining}
+
+
 @router.get("/")
 async def list_models(db: Session = Depends(get_session)):
     openai_key = settings_service.get("openai_api_key", db)
@@ -124,12 +238,18 @@ async def list_models(db: Session = Depends(get_session)):
         _fetch_anthropic_models(anthropic_key),
     )
 
-    return {
-        "local": [{"name": m["name"], "provider": "ollama"} for m in ollama_result],
-        "cloud": [
+    custom_models = _load_custom_models(db)
+    catalog = _merge_custom_models(
+        [
+            *[{"name": m["name"], "provider": "ollama"} for m in ollama_result],
             *openrouter_models,
             *openai_result,
             *gemini_result,
             *anthropic_result,
         ],
+        custom_models,
+    )
+    return {
+        "local": [m for m in catalog if m["provider"] == "ollama"],
+        "cloud": [m for m in catalog if m["provider"] != "ollama"],
     }

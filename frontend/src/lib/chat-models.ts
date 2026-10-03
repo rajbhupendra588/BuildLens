@@ -15,6 +15,13 @@ export const SLOW_REASONING_MODELS = new Set<string>([
 export const DEFAULT_CHAT_PROVIDER = "openrouter";
 export const DEFAULT_CHAT_MODEL = OPENROUTER_CHAT_MODELS[0];
 
+export const MODELS_CHANGED_EVENT = "buildlens-models-changed";
+
+export function notifyModelsChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(MODELS_CHANGED_EVENT));
+}
+
 export function isChatPanelModel(name: string): boolean {
   const names = OPENROUTER_CHAT_MODELS as readonly string[];
   if (names.includes(name)) return true;
